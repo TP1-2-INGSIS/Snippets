@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: snippet-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/snippets}
+    username: ${DB_USER:snippets}
+    password: ${DB_PASSWORD:snippets}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: ${PORT:8080}
+
+services:
+  language:
+    url: ${LANGUAGE_SERVICE_URL:http://localhost:8082}
+  permission:
+    url: ${PERMISSION_SERVICE_URL:http://localhost:8081}
