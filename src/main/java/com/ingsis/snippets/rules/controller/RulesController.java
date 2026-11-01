@@ -3,10 +3,13 @@ package com.ingsis.snippets.rules.controller;
 import jakarta.validation.Valid;
 
 import com.ingsis.snippets.common.identity.CurrentUser;
+import com.ingsis.snippets.rules.dto.RuleApplyResponse;
 import com.ingsis.snippets.rules.dto.RuleConfigRequest;
 import com.ingsis.snippets.rules.dto.RuleConfigResponse;
 import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
+import com.ingsis.snippets.snippet.service.RuleApplier;
+import com.ingsis.snippets.snippet.service.RuleApplier.RuleApplyResult;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,16 +18,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Reglas de lint/format por usuario y lenguaje (US 11, 14). En este paso el {@code PUT}
- * solo guarda; aplicar las reglas a todos los snippets (US 12, 15) se agrega en el grupo C.
+ * Reglas de lint/format por usuario y lenguaje (US 11, 14). El {@code PUT} guarda la
+ * config y además la aplica a todos los snippets OWNER del usuario en ese lenguaje
+ * (US 12, 15): lint re-lintea, format reescribe el contenido (D14).
  */
 @RestController
 class RulesController {
 
 	private final RulesService rules;
 
-	RulesController(RulesService rules) {
+	private final RuleApplier applier;
+
+	RulesController(RulesService rules, RuleApplier applier) {
 		this.rules = rules;
+		this.applier = applier;
 	}
 
 	@GetMapping("/rules/{language}/lint")
@@ -38,15 +45,19 @@ class RulesController {
 	}
 
 	@PutMapping("/rules/{language}/lint")
-	RuleConfigResponse putLint(CurrentUser user, @PathVariable String language,
+	RuleApplyResponse putLint(CurrentUser user, @PathVariable String language,
 			@Valid @RequestBody RuleConfigRequest request) {
-		return rules.save(user, language, RuleKind.LINT, request.config());
+		RuleConfigResponse saved = rules.save(user, language, RuleKind.LINT, request.config());
+		RuleApplyResult result = applier.relint(user, language, saved.config());
+		return new RuleApplyResponse(language, RuleKind.LINT, saved.config(), result.processed(), result.failed());
 	}
 
 	@PutMapping("/rules/{language}/format")
-	RuleConfigResponse putFormat(CurrentUser user, @PathVariable String language,
+	RuleApplyResponse putFormat(CurrentUser user, @PathVariable String language,
 			@Valid @RequestBody RuleConfigRequest request) {
-		return rules.save(user, language, RuleKind.FORMAT, request.config());
+		RuleConfigResponse saved = rules.save(user, language, RuleKind.FORMAT, request.config());
+		RuleApplyResult result = applier.reformat(user, language, saved.config());
+		return new RuleApplyResponse(language, RuleKind.FORMAT, saved.config(), result.processed(), result.failed());
 	}
 
 }
