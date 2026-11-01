@@ -16,6 +16,9 @@ server:
   port: ${PORT:8080}
 
 services:
+  connect-timeout: ${SERVICES_CONNECT_TIMEOUT:2s}
+  # Must stay above Language Service's 5s execution limit.
+  read-timeout: ${SERVICES_READ_TIMEOUT:10s}
   language:
     url: ${LANGUAGE_SERVICE_URL:http://localhost:8082}
   permission:
