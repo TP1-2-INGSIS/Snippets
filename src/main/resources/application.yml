@@ -23,3 +23,9 @@ services:
     url: ${LANGUAGE_SERVICE_URL:http://localhost:8082}
   permission:
     url: ${PERMISSION_SERVICE_URL:http://localhost:8081}
+
+download:
+  fallback: txt
+  extensions:
+    printscript: ps
+    python: py
