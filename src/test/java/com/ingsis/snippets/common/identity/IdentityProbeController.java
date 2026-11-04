@@ -7,9 +7,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class IdentityProbeController {
 
-	@GetMapping("/probe/me")
-	String me(CurrentUser user) {
-		return user.id();
-	}
-
+  @GetMapping("/probe/me")
+  String me(CurrentUser user) {
+    return user.id();
+  }
 }

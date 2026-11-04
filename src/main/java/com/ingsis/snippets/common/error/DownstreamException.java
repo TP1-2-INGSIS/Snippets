@@ -4,8 +4,7 @@ import java.util.List;
 
 public class DownstreamException extends ApiException {
 
-	public DownstreamException(String message, Throwable cause) {
-		super(ErrorCode.DOWNSTREAM_ERROR, message, List.of(), cause);
-	}
-
+  public DownstreamException(String message, Throwable cause) {
+    super(ErrorCode.DOWNSTREAM_ERROR, message, List.of(), cause);
+  }
 }

@@ -1,6 +1,8 @@
 plugins {
 	id 'java'
 	id 'jacoco'
+	id 'checkstyle'
+	id 'com.diffplug.spotless' version '8.11.0'
 	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -73,6 +75,33 @@ tasks.named('jacocoTestCoverageVerification') {
 	}
 }
 
+// Formatter: google-java-format. `./gradlew spotlessApply` formats; `check` verifies.
+spotless {
+	java {
+		target 'src/**/*.java'
+		googleJavaFormat()
+		removeUnusedImports()
+	}
+}
+
+// Linter: Checkstyle with a project config; any warning fails the build.
+checkstyle {
+	toolVersion = '10.21.4'
+	configFile = file('config/checkstyle/checkstyle.xml')
+	maxWarnings = 0
+}
+
 tasks.named('check') {
 	dependsOn tasks.named('jacocoTestCoverageVerification')
+}
+
+// Installs the versioned git hooks (.githooks) for this clone.
+tasks.register('installGitHooks', Exec) {
+	commandLine 'git', 'config', 'core.hooksPath', '.githooks'
+	onlyIf { file('.git').exists() }
+	ignoreExitValue = true
+}
+
+tasks.named('compileJava') {
+	dependsOn tasks.named('installGitHooks')
 }

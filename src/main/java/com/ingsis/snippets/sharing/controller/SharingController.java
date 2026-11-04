@@ -1,15 +1,12 @@
 package com.ingsis.snippets.sharing.controller;
 
-import java.util.List;
-import java.util.UUID;
-
-import jakarta.validation.Valid;
-
 import com.ingsis.snippets.clients.permission.UserSummary;
 import com.ingsis.snippets.common.identity.CurrentUser;
 import com.ingsis.snippets.sharing.dto.ShareRequest;
 import com.ingsis.snippets.sharing.service.SharingService;
-
+import jakarta.validation.Valid;
+import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,22 +20,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 class SharingController {
 
-	private final SharingService sharing;
+  private final SharingService sharing;
 
-	SharingController(SharingService sharing) {
-		this.sharing = sharing;
-	}
+  SharingController(SharingService sharing) {
+    this.sharing = sharing;
+  }
 
-	@GetMapping("/users")
-	List<UserSummary> searchUsers(@RequestParam(required = false, defaultValue = "") String search,
-			@RequestParam(defaultValue = "10") int limit) {
-		return sharing.searchUsers(search, limit);
-	}
+  @GetMapping("/users")
+  List<UserSummary> searchUsers(
+      @RequestParam(required = false, defaultValue = "") String search,
+      @RequestParam(defaultValue = "10") int limit) {
+    return sharing.searchUsers(search, limit);
+  }
 
-	@PostMapping("/snippets/{id}/share")
-	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void share(CurrentUser user, @PathVariable UUID id, @Valid @RequestBody ShareRequest request) {
-		sharing.share(user, id, request.userId());
-	}
-
+  @PostMapping("/snippets/{id}/share")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  void share(CurrentUser user, @PathVariable UUID id, @Valid @RequestBody ShareRequest request) {
+    sharing.share(user, id, request.userId());
+  }
 }

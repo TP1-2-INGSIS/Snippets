@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pre-commit: formatter, linter, tests and coverage must pass (./gradlew check).
+echo "pre-commit: running ./gradlew check ..."
+if ! ./gradlew check --console=plain -q; then
+  echo "pre-commit: check failed. Run './gradlew spotlessApply' for formatting issues." >&2
+  exit 1
+fi

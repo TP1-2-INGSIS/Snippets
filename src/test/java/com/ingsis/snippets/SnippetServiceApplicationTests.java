@@ -8,8 +8,6 @@ import org.springframework.context.annotation.Import;
 @Import(TestcontainersConfiguration.class)
 class SnippetServiceApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
-
+  @Test
+  void contextLoads() {}
 }
