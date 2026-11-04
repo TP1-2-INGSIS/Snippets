@@ -1,14 +1,16 @@
-name: CI / CD
+name: CI
 
+# CI: valida (formatter, linter, tests y cobertura) PRs y pushes.
+# La publicación de la imagen vive en cd.yml y solo corre para main.
 on:
   pull_request:
     branches: [main, dev]
   push:
-    branches: [main, dev, 'feature/**', 'feat/**']
+    # Cualquier rama (feature/**, refactor/**, fix/**, etc.)
+    branches: ['**']
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build:
@@ -27,8 +29,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Ejecuta compilación, Testcontainers y verificación de cobertura JaCoCo (mínimo 80%)
-      - name: Run Tests & JaCoCo Verification
+      # Ejecuta formatter, linter, compilación, Testcontainers y verificación de cobertura JaCoCo (mínimo 80%)
+      - name: Run Checks, Tests & JaCoCo Verification
         run: ./gradlew check
 
       - name: Upload JaCoCo Coverage Report
@@ -37,38 +39,3 @@ jobs:
         with:
           name: jacoco-report
           path: build/reports/jacoco/test/html
-
-  docker:
-    name: Build & Publish Docker Image
-    needs: build
-    runs-on: ubuntu-latest
-    # Solo publica la imagen en GHCR cuando el commit se mergea a main
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata (tags, labels)
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/tp1-2-ingsis/snippet-service
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
