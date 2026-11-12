@@ -87,6 +87,8 @@ class SnippetServiceTest {
     assertThat(detail.ownerId()).isEqualTo("user-ana");
     assertThat(detail.role()).isEqualTo(PermissionRole.OWNER);
     assertThat(detail.lintStatus()).isEqualTo(LintStatus.COMPLIANT);
+    assertThat(detail.createdAt()).isNotNull();
+    assertThat(detail.updatedAt()).isNotNull();
     verify(permissions).grant(any(UUID.class), eq("user-ana"), eq(PermissionRole.OWNER));
   }
 

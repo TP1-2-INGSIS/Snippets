@@ -80,7 +80,7 @@ public class SnippetService {
     List<SourceError> violations =
         language.lint(languageId, content, version, lintRules(user, languageId));
     LintResults.apply(snippet, violations);
-    snippets.save(snippet);
+    snippet = snippets.save(snippet);
 
     try {
       permissions.grant(snippet.getId(), user.id(), PermissionRole.OWNER);
@@ -174,7 +174,7 @@ public class SnippetService {
               lintRules(user, snippet.getLanguage()));
       LintResults.apply(snippet, violations);
     }
-    snippets.save(snippet);
+    snippet = snippets.save(snippet);
 
     if (contentChanged) {
       events.publishEvent(new SnippetContentChanged(snippet.getId()));

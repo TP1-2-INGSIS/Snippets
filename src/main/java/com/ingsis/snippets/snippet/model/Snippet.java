@@ -77,6 +77,9 @@ public class Snippet {
     this.version = version;
     this.content = content;
     this.ownerId = ownerId;
+    Instant now = Instant.now();
+    this.createdAt = now;
+    this.updatedAt = now;
   }
 
   public UUID getId() {
@@ -153,9 +156,13 @@ public class Snippet {
 
   @PrePersist
   void onCreate() {
-    Instant now = Instant.now();
-    this.createdAt = now;
-    this.updatedAt = now;
+    if (this.createdAt == null) {
+      Instant now = Instant.now();
+      this.createdAt = now;
+      this.updatedAt = now;
+    } else if (this.updatedAt == null) {
+      this.updatedAt = this.createdAt;
+    }
   }
 
   @PreUpdate
