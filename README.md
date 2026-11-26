@@ -100,8 +100,10 @@ Todos requieren identidad (ver Autenticación). Errores con el formato común
   UI → Language `{type:"input", value}` y `{type:"stop"}`;
   Language → UI `{type:"output", value}`, `{type:"input-request", prompt}`, `{type:"finished"}` y
   `{type:"error", message, line?, column?}`.
-- Cierre: 1000 al terminar normal, 1008 por identidad o permiso, 1011 ante un error interno
-  (Language caído o que corta, o inactividad: antes se manda un `error`). Cerrar un lado cierra el otro.
+- Cierre: el código de Language se reenvía a la UI sin cambios (1000 en `finished`, `stop`, errores
+  del programa y timeout de input; 1008 por violación de protocolo; 1011 por error interno, "busy"
+  o el límite de 5 min). Snippets usa 1008 si falla la identidad o el permiso y 1011 si Language
+  no responde, corta sin código o el relay falla (antes manda un `error`). Cerrar un lado cierra el otro.
 - `RUN_IDLE_TIMEOUT` (`run.idle-timeout`, default `6m`): red de seguridad si no pasa ningún mensaje.
 
 ### Compartir

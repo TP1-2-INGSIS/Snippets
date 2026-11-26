@@ -43,8 +43,9 @@ import tools.jackson.databind.ObjectMapper;
  *   <li>Language to UI: {@code output}, {@code input-request}, {@code finished}, {@code error}.
  * </ul>
  *
- * Close codes: 1000 on a normal end, 1008 when identity or permission fail (Language is never
- * contacted), 1011 on an internal error (Language unreachable, dropped, or idle timeout).
+ * Close codes: Language's own code is forwarded unchanged (1000, 1008, 1011); the relay uses 1008
+ * when identity or permission fail (Language is never contacted) and 1011 when Language is
+ * unreachable, drops without a close code, or the relay fails (idle timeout included).
  */
 @Component
 class RunHandler extends TextWebSocketHandler {
@@ -281,6 +282,12 @@ class RunHandler extends TextWebSocketHandler {
     }
   }
 
+  /** Close codes Language may send on purpose (1000, 1008, 1011...); 1005/1006 mean it dropped. */
+  private static boolean isForwardable(int code) {
+    return (code >= 1000 && code <= 1003 && code != 1002 || code >= 1007 && code <= 1013)
+        || (code >= 3000 && code <= 4999);
+  }
+
   /** The client side of the Language connection. */
   private final class LanguageHandler extends TextWebSocketHandler {
 
@@ -302,8 +309,10 @@ class RunHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-      if (status.getCode() == CloseStatus.NORMAL.getCode()) {
-        relay.close(CloseStatus.NORMAL);
+      int code = status.getCode();
+      if (isForwardable(code)) {
+        // Language already sent its own error message when it had one: pass the code through.
+        relay.close(new CloseStatus(code, status.getReason()));
       } else {
         relay.fail("Execution service closed the connection");
       }

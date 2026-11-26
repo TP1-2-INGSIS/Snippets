@@ -250,13 +250,15 @@ class RunRelayIntegrationTest {
   }
 
   @Test
-  void languageDroppingTheConnectionSendsErrorThenCloses1011() throws Exception {
-    UUID id = snippet("crash");
-    allow("user-ana", id);
+  void languageCloseCodesAreForwardedUnchanged() throws Exception {
+    for (String language : List.of("crash", "violation")) {
+      UUID id = snippet(language);
+      allow("user-ana", id);
 
-    Client ui = connect("/snippets/" + id + "/run?userId=user-ana");
-    assertThat(ui.next()).contains("\"type\":\"error\"");
-    assertThat(ui.closed.poll(5, TimeUnit.SECONDS).getCode()).isEqualTo(1011);
+      Client ui = connect("/snippets/" + id + "/run?userId=user-ana");
+      int expected = language.equals("crash") ? 1011 : 1008;
+      assertThat(ui.closed.poll(5, TimeUnit.SECONDS).getCode()).isEqualTo(expected);
+    }
   }
 
   @Test
@@ -406,6 +408,7 @@ class RunRelayIntegrationTest {
               session.sendMessage(
                   new TextMessage("{\"type\":\"input-request\",\"prompt\":\"name?\"}"));
             }
+            case "violation" -> session.close(CloseStatus.POLICY_VIOLATION);
             case "crash" -> session.close(new CloseStatus(1011, "boom"));
             default -> {
               // "silent" and "stoppable" wait for the other side.
