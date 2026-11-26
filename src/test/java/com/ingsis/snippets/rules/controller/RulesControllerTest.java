@@ -14,7 +14,6 @@ import com.ingsis.snippets.rules.dto.RuleConfigResponse;
 import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
 import com.ingsis.snippets.snippet.service.RuleApplier;
-import com.ingsis.snippets.snippet.service.RuleApplier.RuleApplyResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -53,7 +52,7 @@ class RulesControllerTest {
   }
 
   @Test
-  void putLintSavesAppliesAndReturnsCounts() throws Exception {
+  void putLintSavesEnqueuesAndReturns202() throws Exception {
     given(rules.save(any(CurrentUser.class), eq("printscript"), eq(RuleKind.LINT), any()))
         .willReturn(
             new RuleConfigResponse(
@@ -61,37 +60,36 @@ class RulesControllerTest {
                 RuleKind.LINT,
                 false,
                 mapper.readTree("{\"identifierFormat\":\"snake case\"}")));
-    given(applier.relint(any(CurrentUser.class), eq("printscript"), any()))
-        .willReturn(new RuleApplyResult(5, 1));
+    given(applier.enqueue(any(CurrentUser.class), eq("printscript"), eq(RuleKind.LINT), any()))
+        .willReturn(5);
 
     mvc.perform(
             put("/rules/printscript/lint")
                 .header("X-User-Id", "user-ana")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"config\":{\"identifierFormat\":\"snake case\"}}"))
-        .andExpect(status().isOk())
+        .andExpect(status().isAccepted())
+        .andExpect(jsonPath("$.kind").value("LINT"))
         .andExpect(jsonPath("$.config.identifierFormat").value("snake case"))
-        .andExpect(jsonPath("$.processed").value(5))
-        .andExpect(jsonPath("$.failed").value(1));
+        .andExpect(jsonPath("$.queued").value(5));
   }
 
   @Test
-  void putFormatReformatsAndReturnsCounts() throws Exception {
+  void putFormatSavesEnqueuesAndReturns202() throws Exception {
     given(rules.save(any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT), any()))
         .willReturn(
             new RuleConfigResponse("printscript", RuleKind.FORMAT, false, mapper.readTree("{}")));
-    given(applier.reformat(any(CurrentUser.class), eq("printscript"), any()))
-        .willReturn(new RuleApplyResult(3, 0));
+    given(applier.enqueue(any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT), any()))
+        .willReturn(3);
 
     mvc.perform(
             put("/rules/printscript/format")
                 .header("X-User-Id", "user-ana")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"config\":{}}"))
-        .andExpect(status().isOk())
+        .andExpect(status().isAccepted())
         .andExpect(jsonPath("$.kind").value("FORMAT"))
-        .andExpect(jsonPath("$.processed").value(3))
-        .andExpect(jsonPath("$.failed").value(0));
+        .andExpect(jsonPath("$.queued").value(3));
   }
 
   @Test

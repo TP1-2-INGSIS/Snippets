@@ -1,8 +1,11 @@
 package com.ingsis.snippets.snippet.repository;
 
+import com.ingsis.snippets.snippet.model.FormatStatus;
 import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
@@ -53,4 +56,10 @@ public interface SnippetRepository extends JpaRepository<Snippet, UUID> {
     String pattern = (name == null || name.isBlank()) ? null : "%" + name.toLowerCase() + "%";
     return search(ids, pattern, language, lintStatus, pageable);
   }
+
+  /** Lints pendientes desde antes de {@code cutoff} (candidatos del reaper). */
+  List<Snippet> findByLintStatusAndLintRequestedAtBefore(LintStatus status, Instant cutoff);
+
+  /** Formateos pendientes desde antes de {@code cutoff} (candidatos del reaper). */
+  List<Snippet> findByFormatStatusAndFormatRequestedAtBefore(FormatStatus status, Instant cutoff);
 }

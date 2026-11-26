@@ -106,10 +106,12 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 **Estado:** Decidida (spec §5 Tests)
 **Decisión:** Después de un `PUT` que cambia el contenido, se corren todos los tests del snippet uno por uno. Si un test falla, o falla la llamada, se registra el resultado y se sigue con el siguiente. La respuesta del `PUT` no depende de los tests.
 
-## D14 · Re-lint / re-format sincrónicos, aislados en `RuleApplier`
-**Estado:** Decidida (spec §5 Reglas)
-**Decisión:** `PUT /rules/{lang}/lint|format` aplica las reglas a todos los snippets OWNER del usuario en ese lenguaje, **dentro del request**. Si un snippet falla, queda `FAILED` (lint) o sin cambios (format) y se sigue. Toda esa lógica vive en `RuleApplier`.
-**Consecuencias:** El paso de Redis Streams podrá mover `RuleApplier` a un consumer sin tocar controllers.
+## D14 · Re-lint / re-format asíncronos con Redis Streams
+**Estado:** Decidida (spec §5 Reglas; reemplaza la versión sincrónica, SNIP-3)
+**Decisión:** `PUT /rules/{lang}/lint|format` guarda la config y, en una transacción, marca cada snippet OWNER del usuario en ese lenguaje como pendiente (`lint_status = PENDING`, o `format_status = PENDING`, con la fecha del pedido). **Después del commit** publica una tarea por snippet (`TaskEvent`, campo `data` con JSON, con `contentHash` = SHA-256 del contenido) en el stream `tasks:printscript` y responde **202** `{language, kind, config, queued}`. Los workers de Language procesan y publican un `TaskResultEvent` en `tasks:results`.
+**Resultados:** un consumidor (`ResultsConsumer`, grupo `snippet-service`, consumer = hostname) procesa primero sus pendientes y luego las entradas nuevas, y cada 30 s hace XAUTOCLAIM de lo que quedó colgado más de 60 s. Descarta (con ACK) los resultados de snippets borrados o con `contentHash` distinto del actual (el snippet cambió en el medio). LINT: `OK` → `COMPLIANT`/`NON_COMPLIANT` según `errors`; `INVALID_SOURCE` o `FAILED` → `FAILED`. FORMAT: `OK` → `formatted_content` + `format_status = DONE`; si no, `FAILED`. El ACK va **después** del commit y aplicar dos veces es inocuo. Si aplicar lanza una excepción no hay ACK; a la 5ª entrega se loguea y se descarta.
+**Tolerancia a fallos:** el estado vive en la base, Redis es solo transporte. Un reaper (`@Scheduled`) re-encola los snippets `PENDING` hace más de `TASK_TIMEOUT` (5 min por defecto), hasta 3 veces; después quedan `FAILED`. Cubre que Redis pierda una tarea o que falle la publicación (que no rompe el request). Editar el contenido de un snippet cancela un formateo pendiente.
+**Consecuencias:** `RuleApplier` es solo el productor (y el re-encolado). Create/update siguen validando y lintando de forma sincrónica (US 1–4 necesitan feedback inmediato).
 
 ## D15 · La descarga formateada usa las reglas del owner
 **Estado:** Decidida (spec §5)
