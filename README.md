@@ -48,14 +48,26 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 Las extensiones de archivo para la descarga se configuran en `application.yml`
 (`download.extensions`, con `download.fallback`).
 
-## Autenticación (temporal)
+## Autenticación
 
-No hay auth real todavía: cada request lleva el header `X-User-Id: <userId>`. Si falta,
-el servicio responde `401 UNAUTHENTICATED`. Más adelante lo reemplaza Auth0 (D02).
+Los endpoints requieren un access token de Auth0 (`Authorization: Bearer <jwt>`). Se valida la
+firma (JWKS), el issuer, la audience y el vencimiento; el usuario es el `sub` del token. Sin
+identidad o con un token inválido, el servicio responde `401 UNAUTHENTICATED` (D02).
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `AUTH0_ISSUER_URI` | (vacío) | Issuer del tenant, con `/` final: `https://tenant.auth0.com/` |
+| `AUTH0_AUDIENCE` | (vacío) | API identifier de Auth0 (la audience del token) |
+| `AUTH_HEADER_IDENTITY_ENABLED` | `false` | Si es `true`, una request sin Bearer puede identificarse con `X-User-Id: <userId>`. Solo tests, local y e2e; nunca en prod |
+| `AUTH0_JWKS_URI` | derivado del issuer | Opcional, solo para tests |
+
+Hay que configurar `AUTH0_ISSUER_URI` + `AUTH0_AUDIENCE`, `AUTH_HEADER_IDENTITY_ENABLED=true`, o
+ambos; si no, la app no arranca. Con el header habilitado y sin `AUTH0_*`, arranca y acepta solo
+`X-User-Id`. El decoder no consulta a Auth0 al arrancar.
 
 ## Endpoints
 
-Todos requieren `X-User-Id`. Errores con el formato común
+Todos requieren identidad (ver Autenticación). Errores con el formato común
 `{ "error": "CODE", "message": "...", "details": [] }` (D03).
 
 ### Snippets
@@ -103,7 +115,7 @@ Al actualizar el contenido de un snippet, todos sus tests se corren automáticam
 |---|---|---|
 | 400 | `BAD_REQUEST` | body / params inválidos |
 | 400 | `UNSUPPORTED_LANGUAGE` | lenguaje o versión no soportados |
-| 401 | `UNAUTHENTICATED` | falta `X-User-Id` |
+| 401 | `UNAUTHENTICATED` | sin identidad o token inválido |
 | 403 | `FORBIDDEN` | tiene rol pero no alcanza para la acción |
 | 404 | `NOT_FOUND` | snippet / test inexistente, o sin ningún rol (D04) |
 | 409 | `ALREADY_SHARED` | ya compartido |

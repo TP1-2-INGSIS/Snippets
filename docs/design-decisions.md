@@ -13,16 +13,19 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 **Decisión:** La UI solo le habla a este servicio. Las llamadas a Language Service y Permission Service salen siempre desde acá. Para que la UI no tenga que conocerlos, este servicio hace de proxy de `GET /users` y `GET /languages`.
 **Consecuencias:** Este servicio orquesta y también maneja las fallas de los otros dos (ver D03 y D11).
 
-## D02 · Identidad por header `X-User-Id` (temporal)
-**Estado:** Decidida (spec §5)
-**Contexto:** En este paso no hay autenticación real. Auth0 llega más adelante.
-**Decisión:** Toda request trae `X-User-Id`; si falta, se responde 401 `UNAUTHENTICATED`. La lectura del header vive en **un único componente**, que expone un `CurrentUser` (o un argumento resuelto en el controller). El resto del código nunca lee el header.
-**Consecuencias:** Para pasar a JWT alcanza con cambiar ese componente.
-**Implementación (paso 1):** `common.identity`:
-- `CurrentUserInterceptor` lee el header y es la única clase que lo conoce. Corre para **todas** las rutas salvo `/error`, así que no hace falta acordarse de pedir el usuario en cada endpoint.
-- `CurrentUserArgumentResolver` inyecta `CurrentUser` como parámetro del controller.
-- El header se toma sin espacios alrededor. Si viene vacío o solo con espacios, cuenta como ausente (401).
-- Efecto lateral aceptado: una ruta inexistente sin header responde 401, no 404, porque la identidad se chequea antes de resolver la ruta.
+## D02 · Identidad: JWT de Auth0 (con `X-User-Id` solo para tests/local)
+**Estado:** Decidida (reemplaza la versión temporal con header)
+**Contexto:** La UI (Auth0 SPA) manda un access token pedido con la audience de la API. nginx solo expone Snippets, así que es el único servicio que valida JWT; Permissions, Language y Assets son internos a la red del stack.
+**Decisión:** Spring Security como *resource server*. Se valida la firma (JWKS), `iss`, `aud` y `exp`; el `CurrentUser` es el `sub` del token validado. El resto del código nunca lee headers ni tokens: recibe un `CurrentUser` como argumento del controller.
+- `X-User-Id` solo se acepta con `AUTH_HEADER_IDENTITY_ENABLED=true` (tests, local, e2e) y solo si la request no trae `Authorization`. Nunca en prod.
+- Si no hay config de Auth0 ni header habilitado, la app **no arranca** (mensaje claro). Con header habilitado y sin `AUTH0_*`, arranca y acepta solo `X-User-Id`.
+- El `JwtDecoder` se arma con `withJwkSetUri(<issuer>.well-known/jwks.json)`: no hace llamadas de red al arrancar (CI y e2e arrancan sin Auth0); las claves se piden con el primer token.
+- Toda ruta requiere identidad, salvo `/error` y `/actuator/health`. Sin identidad o con token inválido: 401 con el formato D03 (`UNAUTHENTICATED`). No hay CORS (mismo origen).
+**Implementación:** `common.identity`:
+- `SecurityConfig`: cadena de filtros, `JwtDecoder` (issuer + audience + timestamps), filtro del header y *entry point* 401. Valida la configuración al construirse.
+- `CurrentUserArgumentResolver` inyecta `CurrentUser` desde el `SecurityContext`.
+- Efecto lateral aceptado: una ruta inexistente sin identidad responde 401, no 404.
+- Env: `AUTH0_ISSUER_URI` (con `/` final, debe coincidir con el `iss`), `AUTH0_AUDIENCE`, `AUTH_HEADER_IDENTITY_ENABLED` (default `false`) y `AUTH0_JWKS_URI` (opcional; solo para tests, por defecto se deriva del issuer).
 
 ## D03 · Formato de error común
 **Estado:** Decidida (spec §5)
