@@ -173,6 +173,7 @@ public class SnippetService {
 
     if (contentChanged) {
       snippet.setFormattedContent(null);
+      snippet.setFormatStatus(com.ingsis.snippets.snippet.model.FormatStatus.DONE);
       validate(snippet.getLanguage(), snippet.getContent(), snippet.getVersion());
       List<SourceError> violations =
           language.lint(

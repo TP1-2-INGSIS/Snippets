@@ -5,6 +5,9 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/snippets}
     username: ${DB_USER:snippets}
     password: ${DB_PASSWORD:snippets}
+  data:
+    redis:
+      url: ${REDIS_URL:redis://localhost:6379}
   jpa:
     open-in-view: false
     hibernate:
@@ -41,3 +44,19 @@ download:
   extensions:
     printscript: ps
     python: py
+
+# D14: lint/format masivos asincronos con Redis Streams. Snippets publica en `stream` y consume
+# `results-stream`; `timeout` es cuanto espera el reaper antes de re-encolar un PENDING.
+tasks:
+  stream: ${REDIS_STREAM_TASKS:tasks:printscript}
+  results-stream: ${REDIS_STREAM_RESULTS:tasks:results}
+  results-group: ${REDIS_RESULTS_GROUP:snippet-service}
+  timeout: ${TASK_TIMEOUT:5m}
+  max-requeues: 3
+  consumer-enabled: ${TASKS_CONSUMER_ENABLED:true}
+  poll-interval: 500ms
+  claim-idle: 60s
+  claim-interval: 30s
+  max-deliveries: 5
+  retry-backoff: ${TASK_RETRY_BACKOFF:2s}
+  reaper-interval: ${TASK_REAPER_INTERVAL:60s}

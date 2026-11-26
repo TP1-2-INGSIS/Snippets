@@ -5,7 +5,7 @@ snippets, tests y reglas, y orquesta a Language Service (validar, formatear, lin
 testear) y Permission Service (quién puede qué). La UI no conoce a los otros dos
 servicios (D01).
 
-Spring Boot 4 · Java 21 · PostgreSQL · Flyway · Gradle.
+Spring Boot 4 · Java 21 · PostgreSQL · Redis Streams · Flyway · Gradle.
 
 ## Cómo correr local
 
@@ -42,6 +42,14 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `DB_PASSWORD` | `snippets` | Password de la base |
 | `LANGUAGE_SERVICE_URL` | `http://localhost:8082` | Base URL de Language Service |
 | `PERMISSION_SERVICE_URL` | `http://localhost:8081` | Base URL de Permission Service |
+| `REDIS_URL` | `redis://localhost:6379` | Redis (transporte de las tareas asíncronas) |
+| `REDIS_STREAM_TASKS` | `tasks:printscript` | Stream donde se publican las tareas de lint/format |
+| `REDIS_STREAM_RESULTS` | `tasks:results` | Stream de resultados de los workers |
+| `REDIS_RESULTS_GROUP` | `snippet-service` | Consumer group de los resultados |
+| `TASK_TIMEOUT` | `5m` | Tiempo antes de que el reaper re-encole un snippet `PENDING` (máx. 3 veces, luego `FAILED`) |
+| `TASK_REAPER_INTERVAL` | `60s` | Cada cuánto corre el reaper |
+| `TASK_RETRY_BACKOFF` | `2s` | Espera (multiplicada por el nº de fallos) antes de reintentar un resultado que falló al aplicarse |
+| `TASKS_CONSUMER_ENABLED` | `true` | Apaga el consumidor de resultados (útil en tests o réplicas sin consumidor) |
 | `SERVICES_CONNECT_TIMEOUT` | `2s` | Timeout de conexión a los otros servicios |
 | `SERVICES_READ_TIMEOUT` | `10s` | Timeout de lectura (debe superar los 5 s de ejecución de Language) |
 | `RUN_IDLE_TIMEOUT` | `6m` | Inactividad máxima del relay WebSocket de ejecución |
@@ -128,10 +136,17 @@ Al actualizar el contenido de un snippet, todos sus tests se corren automáticam
 | Método | Path | Descripción |
 |---|---|---|
 | `GET` | `/rules/{language}/lint` | Ver reglas de lint (default si no hay guardadas) |
-| `PUT` | `/rules/{language}/lint` | Guardar reglas de lint y re-lintear todos los snippets del lenguaje |
+| `PUT` | `/rules/{language}/lint` | Guardar reglas de lint y encolar el re-lint de los snippets del lenguaje. Responde **202** `{language, kind, config, queued}` |
 | `GET` | `/rules/{language}/format` | Ver reglas de formato |
-| `PUT` | `/rules/{language}/format` | Guardar y re-formatear todos los snippets del lenguaje |
+| `PUT` | `/rules/{language}/format` | Guardar reglas de formato y encolar el re-formateo. Responde **202** `{language, kind, config, queued}` |
 | `GET` | `/languages` | Lenguajes y versiones disponibles (proxy) |
+
+El lint y el formato masivos son asíncronos (D14): los snippets quedan `PENDING`
+(`lint_status` / `format_status`), los workers de Language procesan las tareas desde Redis
+Streams y Snippets consume los resultados. Ver `docs/design-decisions.md`.
+Los demás parámetros (`tasks.claim-idle`, `tasks.claim-interval`, `tasks.max-deliveries`,
+`tasks.max-requeues`) están en `application.yml` y se pueden pisar con las variables de entorno
+de Spring (por ejemplo `TASKS_MAX_DELIVERIES`).
 
 ## Códigos de error
 

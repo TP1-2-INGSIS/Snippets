@@ -52,6 +52,32 @@ public class Snippet {
   @Column(name = "lint_status", nullable = false)
   private LintStatus lintStatus = LintStatus.PENDING;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "format_status", nullable = false)
+  private FormatStatus formatStatus = FormatStatus.DONE;
+
+  @Nullable
+  @Column(name = "lint_requested_at")
+  private Instant lintRequestedAt;
+
+  @Column(name = "lint_attempts", nullable = false)
+  private int lintAttempts;
+
+  @Nullable
+  @Column(name = "format_requested_at")
+  private Instant formatRequestedAt;
+
+  @Column(name = "format_attempts", nullable = false)
+  private int formatAttempts;
+
+  @Nullable
+  @Column(name = "lint_task_id")
+  private UUID lintTaskId;
+
+  @Nullable
+  @Column(name = "format_task_id")
+  private UUID formatTaskId;
+
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "lint_violations", nullable = false)
   private List<SourceViolation> lintViolations = new ArrayList<>();
@@ -148,6 +174,54 @@ public class Snippet {
 
   public void setLintStatus(LintStatus lintStatus) {
     this.lintStatus = lintStatus;
+  }
+
+  public FormatStatus getFormatStatus() {
+    return formatStatus;
+  }
+
+  public void setFormatStatus(FormatStatus formatStatus) {
+    this.formatStatus = formatStatus;
+  }
+
+  public @Nullable Instant getLintRequestedAt() {
+    return lintRequestedAt;
+  }
+
+  public @Nullable UUID getLintTaskId() {
+    return lintTaskId;
+  }
+
+  public @Nullable UUID getFormatTaskId() {
+    return formatTaskId;
+  }
+
+  public int getLintAttempts() {
+    return lintAttempts;
+  }
+
+  public @Nullable Instant getFormatRequestedAt() {
+    return formatRequestedAt;
+  }
+
+  public int getFormatAttempts() {
+    return formatAttempts;
+  }
+
+  /** Marca el lint como pendiente. {@code attempts} cuenta los re-encolados del reaper. */
+  public void markLintPending(Instant requestedAt, int attempts, UUID taskId) {
+    this.lintTaskId = taskId;
+    this.lintStatus = LintStatus.PENDING;
+    this.lintRequestedAt = requestedAt;
+    this.lintAttempts = attempts;
+  }
+
+  /** Marca el formateo como pendiente. {@code attempts} cuenta los re-encolados del reaper. */
+  public void markFormatPending(Instant requestedAt, int attempts, UUID taskId) {
+    this.formatTaskId = taskId;
+    this.formatStatus = FormatStatus.PENDING;
+    this.formatRequestedAt = requestedAt;
+    this.formatAttempts = attempts;
   }
 
   public List<SourceViolation> getLintViolations() {
