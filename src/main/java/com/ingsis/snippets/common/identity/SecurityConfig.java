@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -28,6 +29,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
@@ -50,6 +53,9 @@ import tools.jackson.databind.ObjectMapper;
 class SecurityConfig {
 
   static final String USER_HEADER = "X-User-Id";
+
+  /** The interactive execution WebSocket: browsers can't set headers, so it takes query params. */
+  private static final Pattern RUN_PATH = Pattern.compile("^/snippets/[^/]+/run$");
 
   private final String issuerUri;
   private final String audience;
@@ -102,13 +108,29 @@ class SecurityConfig {
                 .authenticated())
         .exceptionHandling(e -> e.authenticationEntryPoint(entryPoint));
     if (jwtConfigured()) {
-      http.oauth2ResourceServer(
-          o -> o.authenticationEntryPoint(entryPoint).jwt(Customizer.withDefaults()));
+      http.oauth2ResourceServer(o ->
+          o.authenticationEntryPoint(entryPoint)
+              .bearerTokenResolver(bearerTokenResolver())
+              .jwt(Customizer.withDefaults()));
     }
     if (headerIdentityEnabled) {
       http.addFilterBefore(new HeaderIdentityFilter(), BearerTokenAuthenticationFilter.class);
     }
     return http.build();
+  }
+
+  /**
+   * Bearer header everywhere; {@code ?access_token=} only on the run WebSocket path (tokens in URLs
+   * end up in logs, so no other endpoint accepts them).
+   */
+  static BearerTokenResolver bearerTokenResolver() {
+    DefaultBearerTokenResolver headerOnly = new DefaultBearerTokenResolver();
+    DefaultBearerTokenResolver withQuery = new DefaultBearerTokenResolver();
+    withQuery.setAllowUriQueryParameter(true);
+    return request ->
+        RUN_PATH.matcher(request.getRequestURI()).matches()
+            ? withQuery.resolve(request)
+            : headerOnly.resolve(request);
   }
 
   /**
@@ -172,6 +194,10 @@ class SecurityConfig {
         HttpServletRequest request, HttpServletResponse response, FilterChain chain)
         throws ServletException, IOException {
       String userId = request.getHeader(USER_HEADER);
+      if ((userId == null || userId.isBlank())
+          && RUN_PATH.matcher(request.getRequestURI()).matches()) {
+        userId = request.getParameter("userId");
+      }
       if (request.getHeader(HttpHeaders.AUTHORIZATION) == null
           && userId != null
           && !userId.isBlank()) {
