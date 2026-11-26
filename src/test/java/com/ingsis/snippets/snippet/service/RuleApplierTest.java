@@ -89,7 +89,7 @@ class RuleApplierTest {
   }
 
   @Test
-  void reformatRewritesContentAndSkipsOtherLanguages() {
+  void reformatStoresFormattedContentKeepsOriginalAndSkipsOtherLanguages() {
     Snippet ps = snippet("printscript");
     Snippet py = snippet("python");
     given(permissions.idsFor("user-ana", PermissionRole.OWNER))
@@ -105,7 +105,9 @@ class RuleApplierTest {
 
     assertThat(result.processed()).isEqualTo(1);
     assertThat(result.failed()).isZero();
-    assertThat(ps.getContent()).isEqualTo("formatted code");
+    assertThat(ps.getFormattedContent()).isEqualTo("formatted code");
+    assertThat(ps.getContent()).isEqualTo("code");
+    assertThat(py.getFormattedContent()).isNull();
     assertThat(py.getContent()).isEqualTo("code");
     verify(language).format(eq("printscript"), any(), any(), any());
   }

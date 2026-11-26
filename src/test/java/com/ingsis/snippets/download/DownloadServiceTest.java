@@ -95,6 +95,33 @@ class DownloadServiceTest {
   }
 
   @Test
+  void formattedDownloadUsesStoredFormattedContentWithoutCallingLanguage() {
+    UUID id = UUID.randomUUID();
+    Snippet snippet = ownedByAna(id);
+    snippet.setFormattedContent("println(1);\n");
+    given(authorization.require(downloader, id, PermissionAction.READ))
+        .willReturn(PermissionRole.READ);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet));
+
+    DownloadContent result = service.download(downloader, id, true);
+
+    assertThat(result.content()).isEqualTo("println(1);\n");
+    verify(language, never()).format(any(), any(), any(), any());
+  }
+
+  @Test
+  void originalDownloadIgnoresStoredFormattedContent() {
+    UUID id = UUID.randomUUID();
+    Snippet snippet = ownedByAna(id);
+    snippet.setFormattedContent("formatted");
+    given(authorization.require(downloader, id, PermissionAction.READ))
+        .willReturn(PermissionRole.READ);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet));
+
+    assertThat(service.download(downloader, id, false).content()).isEqualTo("println(1);");
+  }
+
+  @Test
   void fallbackExtensionForUnknownLanguage() {
     UUID id = UUID.randomUUID();
     Snippet python = new Snippet(id, "Script", null, "python", "3.12", "print(1)", "user-ana");

@@ -204,6 +204,61 @@ class SnippetServiceTest {
   }
 
   @Test
+  void updateContentClearsFormattedContent() {
+    UUID id = UUID.randomUUID();
+    Snippet existing = snippet(id);
+    existing.setFormattedContent("println(1);\n");
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(existing));
+    given(language.validate(any(), any(), any())).willReturn(new ValidationResult(true, List.of()));
+    stubLintRules();
+    given(language.lint(any(), any(), any(), any())).willReturn(List.of());
+    given(snippets.save(any(Snippet.class))).willAnswer(i -> i.getArgument(0));
+
+    service.update(ana, id, new UpdateSnippetRequest(null, null, null, null, "println(2);"));
+
+    assertThat(existing.getFormattedContent()).isNull();
+  }
+
+  @Test
+  void updateMetadataKeepsFormattedContent() {
+    UUID id = UUID.randomUUID();
+    Snippet existing = snippet(id);
+    existing.setFormattedContent("println(1);\n");
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(existing));
+    given(snippets.save(any(Snippet.class))).willAnswer(i -> i.getArgument(0));
+
+    service.update(ana, id, new UpdateSnippetRequest("new name", null, null, null, null));
+
+    assertThat(existing.getFormattedContent()).isEqualTo("println(1);\n");
+  }
+
+  @Test
+  void formatValidatesThenFormatsWithTheCallersFormatRules() {
+    var formatRules = new ObjectMapper().readTree("{\"f\":1}");
+    given(language.validate("printscript", "println( 1 );", "1.1"))
+        .willReturn(new ValidationResult(true, List.of()));
+    given(rules.get(ana, "printscript", RuleKind.FORMAT))
+        .willReturn(new RuleConfigResponse("printscript", RuleKind.FORMAT, false, formatRules));
+    given(language.format("printscript", "println( 1 );", "1.1", formatRules))
+        .willReturn("println(1);");
+
+    assertThat(service.format(ana, "printscript", "1.1", "println( 1 );")).isEqualTo("println(1);");
+    verify(snippets, never()).save(any());
+  }
+
+  @Test
+  void formatInvalidContentThrowsAndDoesNotFormat() {
+    given(language.validate(any(), any(), any()))
+        .willReturn(new ValidationResult(false, List.of(new SourceError("E", "m", 1, 1))));
+
+    assertThatThrownBy(() -> service.format(ana, "printscript", "1.1", "oops"))
+        .isInstanceOf(InvalidSnippetException.class);
+    verify(language, never()).format(any(), any(), any(), any());
+  }
+
+  @Test
   void updateContentInvalidDoesNotPersist() {
     UUID id = UUID.randomUUID();
     given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);

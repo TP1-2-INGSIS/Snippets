@@ -41,6 +41,10 @@ public class Snippet {
   @Column(nullable = false)
   private String content;
 
+  @Nullable
+  @Column(name = "formatted_content")
+  private String formattedContent;
+
   @Column(name = "owner_id", nullable = false)
   private String ownerId;
 
@@ -124,6 +128,14 @@ public class Snippet {
 
   public void setContent(String content) {
     this.content = content;
+  }
+
+  public @Nullable String getFormattedContent() {
+    return formattedContent;
+  }
+
+  public void setFormattedContent(@Nullable String formattedContent) {
+    this.formattedContent = formattedContent;
   }
 
   public String getOwnerId() {

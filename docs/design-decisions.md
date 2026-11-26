@@ -114,6 +114,7 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 ## D15 · La descarga formateada usa las reglas del owner
 **Estado:** Decidida (spec §5)
 **Decisión:** `GET /snippets/{id}/download?formatted=true` formatea con las reglas FORMAT del **owner** del snippet, no con las de quien lo descarga.
+**Actualización (SNIP-2):** si el snippet tiene `formatted_content` guardado (D21), la descarga formateada devuelve eso; si es `NULL`, formatea al vuelo con las reglas del owner como antes. La descarga original siempre devuelve `content`.
 
 ---
 
@@ -154,3 +155,8 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 ## D20 · Representación de listas JSON en la base
 **Estado:** Decidida (se aplica desde el paso 4)
 **Decisión:** `inputs`, `expected_outputs`, `lint_violations` y `rule_config.config` como columnas `jsonb`, mapeadas con `@JdbcTypeCode(SqlTypes.JSON)` (Hibernate 6+).
+
+## D21 · `formatted_content` separado del original
+**Estado:** Decidida (SNIP-2)
+**Decisión:** el formateo automático (`PUT /rules/{lang}/format`, D14) escribe en la columna nullable `snippet.formatted_content` y **no** toca `content`, así la descarga "original" (US 13) devuelve exactamente lo que subió el usuario. Cuando `content` (o lenguaje/versión) cambia en `PUT /snippets/{id}`, la columna se limpia a `NULL`. `POST /snippets/format` formatea contenido arbitrario con las reglas FORMAT del llamador, valida primero (422 con el formato D03 + violaciones si es inválido) y no persiste nada.
+**Consecuencias:** `GET /snippets/{id}` sigue devolviendo `content` original. Si las reglas de formato cambian, la columna se recalcula en el siguiente re-format.

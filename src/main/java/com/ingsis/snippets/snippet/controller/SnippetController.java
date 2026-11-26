@@ -3,6 +3,8 @@ package com.ingsis.snippets.snippet.controller;
 import com.ingsis.snippets.common.error.BadRequestException;
 import com.ingsis.snippets.common.identity.CurrentUser;
 import com.ingsis.snippets.snippet.dto.CreateSnippetRequest;
+import com.ingsis.snippets.snippet.dto.FormatRequest;
+import com.ingsis.snippets.snippet.dto.FormatResponse;
 import com.ingsis.snippets.snippet.dto.SnippetDetail;
 import com.ingsis.snippets.snippet.dto.SnippetPage;
 import com.ingsis.snippets.snippet.dto.UpdateSnippetRequest;
@@ -55,6 +57,12 @@ class SnippetController {
         request.language(),
         request.version(),
         request.content());
+  }
+
+  @PostMapping("/snippets/format")
+  FormatResponse format(CurrentUser user, @Valid @RequestBody FormatRequest request) {
+    return new FormatResponse(
+        service.format(user, request.language(), request.version(), request.content()));
   }
 
   @PostMapping("/snippets/upload")
