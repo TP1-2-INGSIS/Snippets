@@ -1,14 +1,21 @@
 package com.ingsis.snippets.snippet.repository;
 
+import com.ingsis.snippets.snippet.model.FormatStatus;
 import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.jspecify.annotations.Nullable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 /**
@@ -53,4 +60,31 @@ public interface SnippetRepository extends JpaRepository<Snippet, UUID> {
     String pattern = (name == null || name.isBlank()) ? null : "%" + name.toLowerCase() + "%";
     return search(ids, pattern, language, lintStatus, pageable);
   }
+
+  /**
+   * Lints pendientes desde antes de {@code cutoff}, o sin fecha de pedido (candidatos del reaper).
+   * {@code SKIP LOCKED}: dos instancias no re-encolan el mismo snippet a la vez.
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+  @Query(
+      """
+      SELECT s FROM Snippet s
+      WHERE s.lintStatus = :status
+      AND (s.lintRequestedAt IS NULL OR s.lintRequestedAt < :cutoff)
+      """)
+  List<Snippet> findStalledLint(
+      @Param("status") LintStatus status, @Param("cutoff") Instant cutoff);
+
+  /** Igual que {@link #findStalledLint} para los formateos pendientes. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+  @Query(
+      """
+      SELECT s FROM Snippet s
+      WHERE s.formatStatus = :status
+      AND (s.formatRequestedAt IS NULL OR s.formatRequestedAt < :cutoff)
+      """)
+  List<Snippet> findStalledFormat(
+      @Param("status") FormatStatus status, @Param("cutoff") Instant cutoff);
 }
