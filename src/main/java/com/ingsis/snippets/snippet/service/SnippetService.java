@@ -91,6 +91,13 @@ public class SnippetService {
     return detail(snippet, PermissionRole.OWNER);
   }
 
+  /** Formatea contenido arbitrario con las reglas FORMAT del usuario; no persiste nada. */
+  public String format(CurrentUser user, String languageId, String version, String content) {
+    validate(languageId, content, version);
+    var formatRules = rules.get(user, languageId, RuleKind.FORMAT).config();
+    return language.format(languageId, content, version, formatRules);
+  }
+
   @Transactional(readOnly = true)
   public SnippetDetail get(CurrentUser user, UUID id) {
     PermissionRole role = authorization.require(user, id, PermissionAction.READ);
@@ -165,6 +172,7 @@ public class SnippetService {
     }
 
     if (contentChanged) {
+      snippet.setFormattedContent(null);
       validate(snippet.getLanguage(), snippet.getContent(), snippet.getVersion());
       List<SourceError> violations =
           language.lint(

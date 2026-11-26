@@ -74,13 +74,14 @@ Todos requieren identidad (ver Autenticación). Errores con el formato común
 | Método | Path | Descripción |
 |---|---|---|
 | `POST` | `/snippets` | Crear desde editor (JSON) |
+| `POST` | `/snippets/format` | Formatear contenido `{content, language, version}` con tus reglas FORMAT → `{content}`; 422 si es inválido (D21) |
 | `POST` | `/snippets/upload` | Crear desde archivo (multipart) |
 | `GET` | `/snippets/{id}` | Ver un snippet (incluye `sharedWith` si sos OWNER) |
 | `GET` | `/snippets` | Listar con `relation`, `name`, `language`, `lintStatus`, `sort`, `order`, `page`, `size` |
 | `PUT` | `/snippets/{id}` | Actualizar (editor); revalida y re-lintea si cambia el contenido |
 | `PUT` | `/snippets/{id}/upload` | Actualizar (archivo) |
 | `DELETE` | `/snippets/{id}` | Borrar (snippet + tests + permisos) |
-| `GET` | `/snippets/{id}/download?formatted` | Descargar original o formateado (reglas del owner, D15) |
+| `GET` | `/snippets/{id}/download?formatted` | Descargar original o formateado (`formatted_content` guardado, o al vuelo con reglas del owner, D15/D21) |
 
 ### Compartir
 | Método | Path | Descripción |

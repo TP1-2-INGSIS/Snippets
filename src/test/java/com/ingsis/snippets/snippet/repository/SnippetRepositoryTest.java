@@ -46,6 +46,23 @@ class SnippetRepositoryTest {
   }
 
   @Test
+  void formattedContentIsNullByDefaultAndPersistedSeparatelyFromContent() {
+    Snippet fresh = snippets.findById(hola).orElseThrow();
+    assertThat(fresh.getFormattedContent()).isNull();
+
+    fresh.setFormattedContent("formatted");
+    snippets.saveAndFlush(fresh);
+
+    Snippet found = snippets.findById(hola).orElseThrow();
+    assertThat(found.getFormattedContent()).isEqualTo("formatted");
+    assertThat(found.getContent()).isEqualTo("content of Hola mundo");
+
+    found.setFormattedContent(null);
+    snippets.saveAndFlush(found);
+    assertThat(snippets.findById(hola).orElseThrow().getFormattedContent()).isNull();
+  }
+
+  @Test
   void savesAndReadsBackAllFields() {
     Snippet snippet =
         new Snippet(

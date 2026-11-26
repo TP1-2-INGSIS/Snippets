@@ -53,7 +53,10 @@ public class RuleApplier {
         });
   }
 
-  /** Re-formatea: reescribe el contenido; un snippet que falla queda sin cambios. */
+  /**
+   * Re-formatea: guarda el resultado en {@code formattedContent} sin tocar el original; un snippet
+   * que falla queda sin cambios.
+   */
   @Transactional
   public RuleApplyResult reformat(CurrentUser user, String languageId, JsonNode rules) {
     return apply(
@@ -62,7 +65,7 @@ public class RuleApplier {
         snippet -> {
           String formatted =
               language.format(languageId, snippet.getContent(), snippet.getVersion(), rules);
-          snippet.setContent(formatted);
+          snippet.setFormattedContent(formatted);
         });
   }
 

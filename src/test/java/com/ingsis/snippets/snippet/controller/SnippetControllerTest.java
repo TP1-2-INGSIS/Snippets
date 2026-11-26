@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ingsis.snippets.clients.permission.PermissionRole;
+import com.ingsis.snippets.common.error.InvalidSnippetException;
 import com.ingsis.snippets.common.error.NotFoundException;
 import com.ingsis.snippets.common.identity.CurrentUser;
 import com.ingsis.snippets.snippet.dto.SnippetDetail;
@@ -23,6 +24,7 @@ import com.ingsis.snippets.snippet.model.Relation;
 import com.ingsis.snippets.snippet.service.SnippetService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -86,6 +88,50 @@ class SnippetControllerTest {
                     "{\"name\":\"\",\"language\":\"printscript\",\"version\":\"1.1\",\"content\":\"x\"}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+  }
+
+  @Test
+  void formatReturns200WithFormattedContent() throws Exception {
+    given(service.format(any(CurrentUser.class), eq("printscript"), eq("1.1"), eq("println( 1 );")))
+        .willReturn("println(1);");
+
+    mvc.perform(
+            post("/snippets/format")
+                .header("X-User-Id", "user-ana")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"content\":\"println( 1 );\",\"language\":\"printscript\","
+                        + "\"version\":\"1.1\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.content").value("println(1);"));
+  }
+
+  @Test
+  void formatWithMissingFieldsIsBadRequest() throws Exception {
+    mvc.perform(
+            post("/snippets/format")
+                .header("X-User-Id", "user-ana")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"x\",\"language\":\"printscript\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.error").value("BAD_REQUEST"));
+  }
+
+  @Test
+  void formatInvalidContentIs422WithViolations() throws Exception {
+    given(service.format(any(CurrentUser.class), any(), any(), any()))
+        .willThrow(
+            new InvalidSnippetException(
+                List.of(Map.of("rule", "UNEXPECTED_TOKEN", "line", 1, "column", 3))));
+
+    mvc.perform(
+            post("/snippets/format")
+                .header("X-User-Id", "user-ana")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"content\":\"oops\",\"language\":\"printscript\",\"version\":\"1.1\"}"))
+        .andExpect(status().isUnprocessableContent())
+        .andExpect(jsonPath("$.error").value("INVALID_SNIPPET"))
+        .andExpect(jsonPath("$.details[0].rule").value("UNEXPECTED_TOKEN"));
   }
 
   @Test

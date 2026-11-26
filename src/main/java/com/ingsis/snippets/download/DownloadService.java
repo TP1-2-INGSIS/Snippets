@@ -14,8 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Descarga de un snippet, original o formateado (US 13). El formateo usa las reglas FORMAT del
- * **owner** del snippet, no las de quien descarga (D15).
+ * Descarga de un snippet, original o formateado (US 13). Si hay {@code formattedContent} guardado
+ * se usa; si no, se formatea al vuelo con las reglas FORMAT del **owner** del snippet, no las de
+ * quien descarga (D15).
  */
 @Service
 public class DownloadService {
@@ -52,7 +53,9 @@ public class DownloadService {
             .orElseThrow(() -> new NotFoundException("Snippet " + id + " not found"));
 
     String content = snippet.getContent();
-    if (formatted) {
+    if (formatted && snippet.getFormattedContent() != null) {
+      content = snippet.getFormattedContent();
+    } else if (formatted) {
       // Reglas del owner (D15): se leen con su id, no con el del que descarga.
       CurrentUser owner = new CurrentUser(snippet.getOwnerId());
       var ownerRules = rules.get(owner, snippet.getLanguage(), RuleKind.FORMAT).config();
