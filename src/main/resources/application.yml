@@ -60,3 +60,8 @@ tasks:
   max-deliveries: 5
   retry-backoff: ${TASK_RETRY_BACKOFF:2s}
   reaper-interval: ${TASK_REAPER_INTERVAL:60s}
+
+# Revalidacion por version del motor: se chequea GET /languages al arrancar y cada intervalo.
+engine:
+  check-interval: ${ENGINE_CHECK_INTERVAL:10m}
+  page-size: 500

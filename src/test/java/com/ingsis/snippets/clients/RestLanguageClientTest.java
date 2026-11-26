@@ -63,10 +63,12 @@ class RestLanguageClientTest {
   void languages() {
     server.stubFor(
         get("/languages")
-            .willReturn(okJson("[{\"id\":\"printscript\",\"versions\":[\"1.0\",\"1.1\"]}]")));
+            .willReturn(
+                okJson(
+                    "[{\"id\":\"printscript\",\"versions\":[\"1.0\",\"1.1\"],\"engineVersion\":\"1.2.3\"}]")));
 
     assertThat(client.languages())
-        .containsExactly(new LanguageInfo("printscript", List.of("1.0", "1.1")));
+        .containsExactly(new LanguageInfo("printscript", List.of("1.0", "1.1"), "1.2.3"));
   }
 
   @Test

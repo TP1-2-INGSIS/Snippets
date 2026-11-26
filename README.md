@@ -49,6 +49,7 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `TASK_TIMEOUT` | `5m` | Tiempo antes de que el reaper re-encole un snippet `PENDING` (máx. 3 veces, luego `FAILED`) |
 | `TASK_REAPER_INTERVAL` | `60s` | Cada cuánto corre el reaper |
 | `TASK_RETRY_BACKOFF` | `2s` | Espera (multiplicada por el nº de fallos) antes de reintentar un resultado que falló al aplicarse |
+| `ENGINE_CHECK_INTERVAL` | `10m` | Cada cuánto se consulta `GET /languages` para detectar una `engineVersion` nueva (también al arrancar). Si cambió, o el lenguaje es nuevo, se re-encola el lint de todos sus snippets |
 | `TASKS_CONSUMER_ENABLED` | `true` | Apaga el consumidor de resultados (útil en tests o réplicas sin consumidor) |
 | `SERVICES_CONNECT_TIMEOUT` | `2s` | Timeout de conexión a los otros servicios |
 | `SERVICES_READ_TIMEOUT` | `10s` | Timeout de lectura (debe superar los 5 s de ejecución de Language) |
@@ -83,6 +84,7 @@ Todos requieren identidad (ver Autenticación). Errores con el formato común
 | Método | Path | Descripción |
 |---|---|---|
 | `POST` | `/snippets` | Crear desde editor (JSON) |
+| `POST` | `/snippets/revalidate` | Re-encola el lint de todos tus snippets (OWNER) con tus reglas. Responde **202** `{queued}`. Útil para demos de la revalidación |
 | `POST` | `/snippets/format` | Formatear contenido `{content, language, version}` con tus reglas FORMAT → `{content}`; 422 si es inválido (D21) |
 | `POST` | `/snippets/upload` | Crear desde archivo (multipart) |
 | `GET` | `/snippets/{id}` | Ver un snippet (incluye `sharedWith` si sos OWNER) |
@@ -147,6 +149,15 @@ Streams y Snippets consume los resultados. Ver `docs/design-decisions.md`.
 Los demás parámetros (`tasks.claim-idle`, `tasks.claim-interval`, `tasks.max-deliveries`,
 `tasks.max-requeues`) están en `application.yml` y se pueden pisar con las variables de entorno
 de Spring (por ejemplo `TASKS_MAX_DELIVERIES`).
+
+### Revalidación por versión del motor
+
+Al arrancar y cada `ENGINE_CHECK_INTERVAL`, `EngineVersionWatcher` compara la `engineVersion` de cada
+lenguaje (`GET /languages`) con la última guardada en `language_engine_version`. Si difiere o no hay
+fila (lenguaje visto por primera vez), encola un LINT por snippet con las reglas de su owner por el
+mismo pipeline asíncrono de las reglas (pasan a `PENDING`; un código inválido termina en `FAILED`
+con las violaciones de sintaxis) y guarda la versión nueva. Si Language no responde, reintenta en el
+próximo tick.
 
 ## Códigos de error
 
