@@ -28,8 +28,8 @@ class LanguageControllerTest {
     given(languages.languages())
         .willReturn(
             List.of(
-                new LanguageInfo("printscript", List.of("1.0", "1.1")),
-                new LanguageInfo("python", List.of("3.12"))));
+                new LanguageInfo("printscript", List.of("1.0", "1.1"), "1.2.3"),
+                new LanguageInfo("python", List.of("3.12"), null)));
 
     mvc.perform(get("/languages").header("X-User-Id", "user-ana"))
         .andExpect(status().isOk())

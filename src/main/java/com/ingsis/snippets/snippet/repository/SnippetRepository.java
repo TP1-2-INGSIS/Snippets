@@ -87,4 +87,16 @@ public interface SnippetRepository extends JpaRepository<Snippet, UUID> {
       """)
   List<Snippet> findStalledFormat(
       @Param("status") FormatStatus status, @Param("cutoff") Instant cutoff);
+
+  /**
+   * Página keyset (por id) de los snippets de un lenguaje; no se corre con los cambios de estado.
+   */
+  @Query(
+      """
+      SELECT s FROM Snippet s
+      WHERE s.language = :language AND s.id > :after
+      ORDER BY s.id
+      """)
+  List<Snippet> findLanguagePage(
+      @Param("language") String language, @Param("after") UUID after, Pageable pageable);
 }

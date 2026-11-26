@@ -18,11 +18,16 @@ import com.ingsis.snippets.tasks.TaskType;
 import com.ingsis.snippets.tasks.TasksProperties;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
@@ -95,6 +100,62 @@ public class RuleApplier {
     }
     publisher.publishAfterCommit(events);
     return events.size();
+  }
+
+  /** Una página de revalidación: cuántos se encolaron y el último id (null = no quedan más). */
+  public record RevalidationPage(int queued, @Nullable UUID lastId, int scanned) {}
+
+  /**
+   * Revalidación por nueva versión del motor: encola un LINT, con las reglas de cada owner, por
+   * cada snippet de la página (keyset por id). Transacción propia por página; las tareas se
+   * publican al commitear.
+   */
+  @Transactional(propagation = Propagation.REQUIRES_NEW)
+  public RevalidationPage revalidateLanguagePage(
+      String languageId, @Nullable UUID after, int pageSize) {
+    List<Snippet> page =
+        snippets.findLanguagePage(
+            languageId, after == null ? new UUID(0L, 0L) : after, PageRequest.ofSize(pageSize));
+    Map<String, JsonNode> rulesByOwner = new HashMap<>();
+    int queued =
+        enqueueLint(page, s -> rulesByOwner.computeIfAbsent(s.getOwnerId(), o -> lintRules(o, s)));
+    UUID last = page.isEmpty() ? null : page.get(page.size() - 1).getId();
+    return new RevalidationPage(queued, last, page.size());
+  }
+
+  /** Re-encola el LINT de todos los snippets OWNER del usuario (demo de la revalidación). */
+  @Transactional
+  public int revalidateOwned(CurrentUser user) {
+    List<UUID> ownedIds =
+        permissions.idsFor(user.id(), PermissionRole.OWNER).stream()
+            .map(SnippetPermission::snippetId)
+            .toList();
+    Map<String, JsonNode> rulesByLanguage = new HashMap<>();
+    return enqueueLint(
+        snippets.findAllById(ownedIds),
+        s -> rulesByLanguage.computeIfAbsent(s.getLanguage(), l -> lintRules(user.id(), s)));
+  }
+
+  private int enqueueLint(
+      List<Snippet> toEnqueue, java.util.function.Function<Snippet, JsonNode> rulesFor) {
+    Instant now = Instant.now();
+    List<TaskEvent> events = new ArrayList<>();
+    for (Snippet snippet : toEnqueue) {
+      try {
+        TaskEvent event = TaskEvent.of(snippet, TaskType.LINT, rulesFor.apply(snippet).toString());
+        snippet.markLintPending(now, 0, event.taskId());
+        events.add(event);
+      } catch (RuntimeException ex) {
+        log.warn("Could not revalidate snippet {}", snippet.getId(), ex);
+        snippet.setLintStatus(LintStatus.FAILED);
+      }
+    }
+    publisher.publishAfterCommit(events);
+    return events.size();
+  }
+
+  private JsonNode lintRules(String ownerId, Snippet snippet) {
+    return rules.get(new CurrentUser(ownerId), snippet.getLanguage(), RuleKind.LINT).config();
   }
 
   /**
