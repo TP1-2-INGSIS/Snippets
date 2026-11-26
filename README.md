@@ -42,6 +42,10 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `DB_PASSWORD` | `snippets` | Password de la base |
 | `LANGUAGE_SERVICE_URL` | `http://localhost:8082` | Base URL de Language Service |
 | `PERMISSION_SERVICE_URL` | `http://localhost:8081` | Base URL de Permission Service |
+| `ASSETS_SERVICE_URL` | `http://localhost:8083` | Base URL de Assets Service (solo se usa con `SNIPPET_STORAGE=assets`) |
+| `SNIPPET_STORAGE` | `database` | Dónde vive el contenido: `database` (columna `content`) o `assets` (Assets Service, D06) |
+| `SNIPPET_MIGRATE_ON_STARTUP` | `true` | En modo `assets`, sube al arrancar el contenido que sigue en la columna (idempotente, en segundo plano) |
+| `SNIPPET_MIGRATION_BATCH_SIZE` | `100` | Tamaño de página del migrador |
 | `REDIS_URL` | `redis://localhost:6379` | Redis (transporte de las tareas asíncronas) |
 | `REDIS_STREAM_TASKS` | `tasks:printscript` | Stream donde se publican las tareas de lint/format |
 | `REDIS_STREAM_RESULTS` | `tasks:results` | Stream de resultados de los workers |
@@ -54,6 +58,11 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `SERVICES_CONNECT_TIMEOUT` | `2s` | Timeout de conexión a los otros servicios |
 | `SERVICES_READ_TIMEOUT` | `10s` | Timeout de lectura (debe superar los 5 s de ejecución de Language) |
 | `RUN_IDLE_TIMEOUT` | `6m` | Inactividad máxima del relay WebSocket de ejecución |
+
+Con `SNIPPET_STORAGE=assets` el contenido se guarda en `/v1/assets/{snippetId}` y la columna `content`
+queda en `NULL` (Snippets conserva solo la metadata). Las filas viejas se migran al arrancar o, si
+no, al leerlas (si Assets responde 404 y la columna tiene texto, se sirve y se sube en el momento).
+Volver a `database` después de migrar requiere devolver el contenido a la columna: no es automático.
 
 Las extensiones de archivo para la descarga se configuran en `application.yml`
 (`download.extensions`, con `download.fallback`).

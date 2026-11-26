@@ -27,7 +27,7 @@ class TaskMappingTest {
   @Test
   void taskEventSerializesTheAgreedFields() {
     Snippet snippet = snippet();
-    TaskEvent event = TaskEvent.of(snippet, TaskType.LINT, "{\"a\":1}");
+    TaskEvent event = TaskEvent.of(snippet, "println(1);", TaskType.LINT, "{\"a\":1}");
 
     JsonNode json = mapper.readTree(mapper.writeValueAsString(event));
 
@@ -108,8 +108,8 @@ class TaskMappingTest {
             null,
             null);
 
-    assertThat(ResultProcessor.isStale(snippet, fresh)).isFalse();
-    assertThat(ResultProcessor.isStale(snippet, old)).isTrue();
+    assertThat(ResultProcessor.isStale(snippet, "println(1);", fresh)).isFalse();
+    assertThat(ResultProcessor.isStale(snippet, "println(1);", old)).isTrue();
     assertThat(snippet.getLintStatus()).isEqualTo(LintStatus.PENDING);
   }
 }

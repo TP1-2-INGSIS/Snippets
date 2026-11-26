@@ -5,6 +5,7 @@ import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.model.SourceViolation;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -23,8 +24,11 @@ public class ResultProcessor {
 
   private final SnippetRepository snippets;
 
-  public ResultProcessor(SnippetRepository snippets) {
+  private final SnippetStorage storage;
+
+  public ResultProcessor(SnippetRepository snippets, SnippetStorage storage) {
     this.snippets = snippets;
+    this.storage = storage;
   }
 
   /**
@@ -37,7 +41,7 @@ public class ResultProcessor {
       log.debug("Result {} for a deleted snippet; ignoring", result.taskId());
       return false;
     }
-    if (isStale(snippet, result)) {
+    if (isStale(snippet, storage.get(snippet.getId()), result)) {
       log.debug("Stale result {} for snippet {}; ignoring", result.taskId(), snippet.getId());
       return false;
     }
@@ -57,8 +61,8 @@ public class ResultProcessor {
    * Viejo si el snippet cambió desde que se encoló la tarea (el hash del eco no coincide) o si no
    * es la última tarea encolada de ese tipo (otro cambio de reglas o un re-encolado la reemplazó).
    */
-  static boolean isStale(Snippet snippet, TaskResultEvent result) {
-    if (!ContentHash.sha256(snippet.getContent()).equals(result.contentHash())) {
+  static boolean isStale(Snippet snippet, String content, TaskResultEvent result) {
+    if (!ContentHash.sha256(content).equals(result.contentHash())) {
       return true;
     }
     UUID current =

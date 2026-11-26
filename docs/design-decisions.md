@@ -60,9 +60,14 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 **Consecuencias:** Cada operación sobre un snippet hace al menos una llamada a Permission Service. Por ahora se acepta ese costo, sin cache.
 
 ## D06 · Contenido detrás de `SnippetStorage`
-**Estado:** Decidida (spec §4.1)
-**Decisión:** El contenido se lee y escribe solo a través de la interfaz `SnippetStorage` (`save`, `get`, `remove`). La implementación de este paso guarda en la columna `content` de Postgres.
-**Consecuencias:** Más adelante se podrá pasar al asset service (bucket) sin tocar la lógica.
+**Estado:** Decidida (spec §4.1); aplicada y extendida en SNIP-4 (D3 del plan de cierre)
+**Decisión:** Todo acceso al contenido (crear, detalle, actualizar, borrar, descarga, tests, encolado de reglas, reaper, relay WebSocket, hash del contenido) pasa por `SnippetStorage` (`create`, `save`, `get`, `remove`). Hay dos implementaciones, elegidas con `SNIPPET_STORAGE`:
+- `database` (default): la columna `content` de la fila. Local y tests no necesitan Assets.
+- `assets`: `AssetSnippetStorage` contra Assets Service (`/v1/assets/{snippetId}`: POST crea, PUT reemplaza, GET lee, DELETE borra). Los errores siguen D11 (`DownstreamException`, 502). En este modo la columna `content` (nullable desde V8) no se escribe.
+
+**Migración:** al arrancar en modo `assets`, un migrador (paginado por id, una transacción por fila, idempotente y reanudable) sube las filas con `content` no nulo y deja la columna en `NULL`; si Assets ya tiene el contenido, gana Assets. Además, un `get` con 404 en Assets y texto en la columna lo sirve y migra esa fila.
+**Consistencia:** crear compensa (D10): si falla guardar el contenido se revierte la metadata, y si falla el grant se borra el contenido. Actualizar escribe el contenido al final de la transacción. Borrar elimina primero el contenido (si Assets falla no se borra nada) y después la fila.
+**Consecuencias:** El resultado de un worker (`ResultProcessor`) lee el contenido de Assets para comparar el hash. La columna queda nullable (no se borra) por si hay que volver atrás, pero volver a `database` después de migrar exige restaurar el contenido en la columna.
 
 ## D07 · Reglas por (usuario, lenguaje, tipo), opacas, con defaults
 **Estado:** Decidida (spec §4, acordada en el diseño)

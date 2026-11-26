@@ -99,4 +99,13 @@ public interface SnippetRepository extends JpaRepository<Snippet, UUID> {
       """)
   List<Snippet> findLanguagePage(
       @Param("language") String language, @Param("after") UUID after, Pageable pageable);
+
+  /** Ids con contenido todavía en la columna (migración a Assets), paginados por id. */
+  @Query(
+      """
+      SELECT s.id FROM Snippet s
+      WHERE s.content IS NOT NULL AND s.id > :after
+      ORDER BY s.id
+      """)
+  List<UUID> findIdsWithContentAfter(@Param("after") UUID after, Pageable pageable);
 }

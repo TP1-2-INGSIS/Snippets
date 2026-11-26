@@ -22,6 +22,6 @@ public final class WireMockClients {
 
   private static ServicesProperties properties(String url, Duration readTimeout) {
     ServicesProperties.Endpoint endpoint = new ServicesProperties.Endpoint(url);
-    return new ServicesProperties(endpoint, endpoint, Duration.ofSeconds(1), readTimeout);
+    return new ServicesProperties(endpoint, endpoint, endpoint, Duration.ofSeconds(1), readTimeout);
   }
 }

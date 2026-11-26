@@ -8,6 +8,7 @@ import com.ingsis.snippets.common.error.NotFoundException;
 import com.ingsis.snippets.common.identity.CurrentUser;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import com.ingsis.snippets.tests.dto.TestRequest;
 import com.ingsis.snippets.tests.dto.TestRunResult;
 import com.ingsis.snippets.tests.dto.TestView;
@@ -38,15 +39,19 @@ public class SnippetTestService {
 
   private final LanguageClient language;
 
+  private final SnippetStorage storage;
+
   public SnippetTestService(
       SnippetTestRepository tests,
       SnippetRepository snippets,
       AuthorizationService authorization,
-      LanguageClient language) {
+      LanguageClient language,
+      SnippetStorage storage) {
     this.tests = tests;
     this.snippets = snippets;
     this.authorization = authorization;
     this.language = language;
+    this.storage = storage;
   }
 
   @Transactional
@@ -95,7 +100,7 @@ public class SnippetTestService {
     TestResult result =
         language.test(
             snippet.getLanguage(),
-            snippet.getContent(),
+            storage.get(snippetId),
             snippet.getVersion(),
             test.getInputs(),
             test.getExpectedOutputs());
@@ -116,12 +121,23 @@ public class SnippetTestService {
     if (snippet == null) {
       return;
     }
-    for (SnippetTest test : tests.findBySnippetId(snippetId)) {
+    List<SnippetTest> all = tests.findBySnippetId(snippetId);
+    if (all.isEmpty()) {
+      return;
+    }
+    String content;
+    try {
+      content = storage.get(snippetId);
+    } catch (RuntimeException ex) {
+      log.warn("Auto-run skipped for snippet {}: could not load its content", snippetId, ex);
+      return;
+    }
+    for (SnippetTest test : all) {
       try {
         TestResult result =
             language.test(
                 snippet.getLanguage(),
-                snippet.getContent(),
+                content,
                 snippet.getVersion(),
                 test.getInputs(),
                 test.getExpectedOutputs());

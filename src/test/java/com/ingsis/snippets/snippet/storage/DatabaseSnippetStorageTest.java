@@ -27,7 +27,7 @@ class DatabaseSnippetStorageTest {
     storage = new DatabaseSnippetStorage(snippets);
   }
 
-  private UUID persist(String content) {
+  private UUID persist(@org.jspecify.annotations.Nullable String content) {
     Snippet snippet =
         new Snippet(UUID.randomUUID(), "n", null, "printscript", "1.1", content, "user-ana");
     return snippets.save(snippet).getId();
@@ -47,10 +47,18 @@ class DatabaseSnippetStorageTest {
   }
 
   @Test
-  void removeDeletesTheRow() {
-    UUID id = persist("gone");
+  void removeLeavesTheRowToTheCaller() {
+    UUID id = persist("kept");
     storage.remove(id);
-    assertThat(snippets.findById(id)).isEmpty();
+    assertThat(snippets.findById(id)).isPresent();
+  }
+
+  @Test
+  void getOnARowWithoutContentFails() {
+    UUID id = persist(null);
+    assertThatThrownBy(() -> storage.get(id))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("no content");
   }
 
   @Test

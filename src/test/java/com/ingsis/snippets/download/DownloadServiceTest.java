@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -17,6 +18,7 @@ import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.ObjectMapper;
@@ -41,6 +44,8 @@ class DownloadServiceTest {
 
   @Mock private RulesService rules;
 
+  @Mock private SnippetStorage storage;
+
   private DownloadService service;
 
   @BeforeEach
@@ -51,7 +56,9 @@ class DownloadServiceTest {
             snippets,
             language,
             rules,
-            new DownloadProperties(Map.of("printscript", "ps"), "txt"));
+            new DownloadProperties(Map.of("printscript", "ps"), "txt"),
+            storage);
+    lenient().when(storage.get(ArgumentMatchers.any())).thenReturn("from-storage");
   }
 
   private Snippet ownedByAna(UUID id) {
@@ -67,7 +74,7 @@ class DownloadServiceTest {
 
     DownloadContent result = service.download(downloader, id, false);
 
-    assertThat(result.content()).isEqualTo("println(1);");
+    assertThat(result.content()).isEqualTo("from-storage");
     assertThat(result.filename()).isEqualTo("Hola.ps");
     verify(language, never()).format(any(), any(), any(), any());
   }
@@ -81,7 +88,7 @@ class DownloadServiceTest {
     given(snippets.findById(id)).willReturn(Optional.of(ownedByAna(id)));
     given(rules.get(any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT)))
         .willReturn(new RuleConfigResponse("printscript", RuleKind.FORMAT, false, ownerRules));
-    given(language.format(eq("printscript"), eq("println(1);"), eq("1.1"), eq(ownerRules)))
+    given(language.format(eq("printscript"), eq("from-storage"), eq("1.1"), eq(ownerRules)))
         .willReturn("formatted!");
 
     DownloadContent result = service.download(downloader, id, true);
@@ -118,7 +125,7 @@ class DownloadServiceTest {
         .willReturn(PermissionRole.READ);
     given(snippets.findById(id)).willReturn(Optional.of(snippet));
 
-    assertThat(service.download(downloader, id, false).content()).isEqualTo("println(1);");
+    assertThat(service.download(downloader, id, false).content()).isEqualTo("from-storage");
   }
 
   @Test

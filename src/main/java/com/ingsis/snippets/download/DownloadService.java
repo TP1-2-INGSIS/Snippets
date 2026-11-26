@@ -9,6 +9,7 @@ import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,17 +32,21 @@ public class DownloadService {
 
   private final DownloadProperties properties;
 
+  private final SnippetStorage storage;
+
   public DownloadService(
       AuthorizationService authorization,
       SnippetRepository snippets,
       LanguageClient language,
       RulesService rules,
-      DownloadProperties properties) {
+      DownloadProperties properties,
+      SnippetStorage storage) {
     this.authorization = authorization;
     this.snippets = snippets;
     this.language = language;
     this.rules = rules;
     this.properties = properties;
+    this.storage = storage;
   }
 
   @Transactional(readOnly = true)
@@ -52,7 +57,7 @@ public class DownloadService {
             .findById(id)
             .orElseThrow(() -> new NotFoundException("Snippet " + id + " not found"));
 
-    String content = snippet.getContent();
+    String content;
     if (formatted && snippet.getFormattedContent() != null) {
       content = snippet.getFormattedContent();
     } else if (formatted) {
@@ -60,8 +65,9 @@ public class DownloadService {
       CurrentUser owner = new CurrentUser(snippet.getOwnerId());
       var ownerRules = rules.get(owner, snippet.getLanguage(), RuleKind.FORMAT).config();
       content =
-          language.format(
-              snippet.getLanguage(), snippet.getContent(), snippet.getVersion(), ownerRules);
+          language.format(snippet.getLanguage(), storage.get(id), snippet.getVersion(), ownerRules);
+    } else {
+      content = storage.get(id);
     }
     String filename = snippet.getName() + "." + properties.extensionFor(snippet.getLanguage());
     return new DownloadContent(filename, content);

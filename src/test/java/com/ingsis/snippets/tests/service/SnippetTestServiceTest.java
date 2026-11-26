@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 import com.ingsis.snippets.authorization.AuthorizationService;
@@ -17,6 +18,7 @@ import com.ingsis.snippets.common.error.NotFoundException;
 import com.ingsis.snippets.common.identity.CurrentUser;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import com.ingsis.snippets.tests.dto.TestRequest;
 import com.ingsis.snippets.tests.dto.TestRunResult;
 import com.ingsis.snippets.tests.model.SnippetTest;
@@ -28,6 +30,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -44,11 +47,14 @@ class SnippetTestServiceTest {
 
   @Mock private LanguageClient language;
 
+  @Mock private SnippetStorage storage;
+
   private SnippetTestService service;
 
   @BeforeEach
   void setUp() {
-    service = new SnippetTestService(testsRepo, snippets, authorization, language);
+    service = new SnippetTestService(testsRepo, snippets, authorization, language, storage);
+    lenient().when(storage.get(ArgumentMatchers.any())).thenReturn("from-storage");
   }
 
   private Snippet snippet(UUID id) {
@@ -165,5 +171,35 @@ class SnippetTestServiceTest {
     service.runAll(snippetId);
 
     verify(testsRepo, org.mockito.Mockito.never()).save(any());
+  }
+
+  @Test
+  void runSendsTheContentLoadedFromStorage() {
+    UUID snippetId = UUID.randomUUID();
+    UUID testId = UUID.randomUUID();
+    given(authorization.require(ana, snippetId, PermissionAction.READ))
+        .willReturn(com.ingsis.snippets.clients.permission.PermissionRole.READ);
+    given(snippets.findById(snippetId)).willReturn(Optional.of(snippet(snippetId)));
+    given(testsRepo.findByIdAndSnippetId(testId, snippetId))
+        .willReturn(Optional.of(test(snippetId, testId)));
+    given(language.test(any(), any(), any(), any(), any()))
+        .willReturn(new TestResult(true, List.of(), List.of(), null));
+
+    service.run(ana, snippetId, testId);
+
+    verify(language).test(eq("printscript"), eq("from-storage"), eq("1.1"), any(), any());
+  }
+
+  @Test
+  void runAllSkipsWhenTheContentCannotBeLoaded() {
+    UUID snippetId = UUID.randomUUID();
+    given(snippets.findById(snippetId)).willReturn(Optional.of(snippet(snippetId)));
+    given(testsRepo.findBySnippetId(snippetId))
+        .willReturn(List.of(test(snippetId, UUID.randomUUID())));
+    given(storage.get(snippetId)).willThrow(new DownstreamException("assets down", null));
+
+    service.runAll(snippetId);
+
+    verify(language, org.mockito.Mockito.never()).test(any(), any(), any(), any(), any());
   }
 }

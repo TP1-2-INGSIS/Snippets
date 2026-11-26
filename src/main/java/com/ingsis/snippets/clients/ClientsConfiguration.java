@@ -25,7 +25,7 @@ public class ClientsConfiguration {
     return new RestPermissionClient(restClient(builder, properties.permission(), properties));
   }
 
-  private static RestClient restClient(
+  public static RestClient restClient(
       RestClient.Builder builder,
       ServicesProperties.Endpoint endpoint,
       ServicesProperties properties) {
