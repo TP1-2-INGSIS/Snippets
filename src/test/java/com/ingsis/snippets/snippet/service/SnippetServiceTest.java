@@ -30,6 +30,7 @@ import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Relation;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -60,11 +61,14 @@ class SnippetServiceTest {
 
   @Mock private ApplicationEventPublisher events;
 
+  @Mock private SnippetStorage storage;
+
   private SnippetService service;
 
   @BeforeEach
   void setUp() {
-    service = new SnippetService(snippets, language, permissions, authorization, rules, events);
+    service =
+        new SnippetService(snippets, language, permissions, authorization, rules, events, storage);
   }
 
   private void stubLintRules() {
@@ -326,5 +330,134 @@ class SnippetServiceTest {
     Snippet s = new Snippet(id, "Hola", "d", "printscript", "1.1", "println(1);", "user-ana");
     s.setLintStatus(LintStatus.COMPLIANT);
     return s;
+  }
+
+  private void stubValidAndLint() {
+    given(language.validate(any(), any(), any())).willReturn(new ValidationResult(true, List.of()));
+    stubLintRules();
+    given(language.lint(any(), any(), any(), any())).willReturn(List.of());
+    given(snippets.save(any(Snippet.class))).willAnswer(i -> i.getArgument(0));
+  }
+
+  @Test
+  void createStoresTheContentInStorageNotInTheRow() {
+    stubValidAndLint();
+
+    SnippetDetail detail = service.create(ana, "Hola", null, "printscript", "1.1", "println(1);");
+
+    org.mockito.ArgumentCaptor<Snippet> saved = org.mockito.ArgumentCaptor.forClass(Snippet.class);
+    verify(snippets).save(saved.capture());
+    assertThat(saved.getValue().getContent()).isNull();
+    verify(storage).create(saved.getValue().getId(), "println(1);");
+    assertThat(detail.content()).isEqualTo("println(1);");
+  }
+
+  @Test
+  void createRollsBackMetadataAndPermissionWhenStoringContentFails() {
+    stubValidAndLint();
+    org.mockito.BDDMockito.willThrow(new DownstreamException("assets down", null))
+        .given(storage)
+        .create(any(), any());
+
+    assertThatThrownBy(() -> service.create(ana, "Hola", null, "printscript", "1.1", "x"))
+        .isInstanceOf(DownstreamException.class);
+    verify(snippets).delete(any(Snippet.class));
+    verify(permissions, never()).grant(any(), any(), any());
+  }
+
+  @Test
+  void createRemovesStoredContentWhenGrantFails() {
+    stubValidAndLint();
+    org.mockito.BDDMockito.willThrow(new DownstreamException("perm down", null))
+        .given(permissions)
+        .grant(any(), any(), any());
+    org.mockito.BDDMockito.willThrow(new DownstreamException("assets down", null))
+        .given(storage)
+        .remove(any());
+
+    assertThatThrownBy(() -> service.create(ana, "Hola", null, "printscript", "1.1", "x"))
+        .isInstanceOf(DownstreamException.class)
+        .hasMessageContaining("ownership");
+    verify(storage).remove(any(UUID.class));
+    verify(snippets).delete(any(Snippet.class));
+  }
+
+  @Test
+  void getReadsTheContentFromStorage() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.READ)).willReturn(PermissionRole.READ);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+    given(storage.get(id)).willReturn("from assets");
+
+    assertThat(service.get(ana, id).content()).isEqualTo("from assets");
+  }
+
+  @Test
+  void updateContentWritesToStorageAfterSavingMetadata() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+    stubValidAndLint();
+
+    SnippetDetail detail =
+        service.update(ana, id, new UpdateSnippetRequest(null, null, null, null, "println(2);"));
+
+    var order = org.mockito.Mockito.inOrder(snippets, storage, events);
+    order.verify(snippets).save(any(Snippet.class));
+    order.verify(storage).save(id, "println(2);");
+    order.verify(events).publishEvent(any(SnippetContentChanged.class));
+    assertThat(detail.content()).isEqualTo("println(2);");
+  }
+
+  @Test
+  void updateLanguageOnlyRevalidatesTheStoredContent() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+    given(storage.get(id)).willReturn("stored");
+    stubValidAndLint();
+
+    service.update(ana, id, new UpdateSnippetRequest(null, null, null, "1.0", null));
+
+    verify(language).validate("printscript", "stored", "1.0");
+    verify(storage, never()).save(any(), any());
+  }
+
+  @Test
+  void updateMetadataOnlyDoesNotTouchStorageWrites() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+    given(snippets.save(any(Snippet.class))).willAnswer(i -> i.getArgument(0));
+
+    service.update(ana, id, new UpdateSnippetRequest("n2", null, null, null, null));
+
+    verify(storage, never()).save(any(), any());
+  }
+
+  @Test
+  void deleteRemovesTheContentFromStorage() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+
+    service.delete(ana, id);
+
+    verify(storage).remove(id);
+    verify(snippets).delete(any(Snippet.class));
+  }
+
+  @Test
+  void deleteKeepsTheSnippetWhenStorageFails() {
+    UUID id = UUID.randomUUID();
+    given(authorization.require(ana, id, PermissionAction.WRITE)).willReturn(PermissionRole.OWNER);
+    given(snippets.findById(id)).willReturn(Optional.of(snippet(id)));
+    org.mockito.BDDMockito.willThrow(new DownstreamException("assets down", null))
+        .given(storage)
+        .remove(id);
+
+    assertThatThrownBy(() -> service.delete(ana, id)).isInstanceOf(DownstreamException.class);
+    verify(snippets, never()).delete(any(Snippet.class));
+    verify(permissions, never()).deleteAll(any());
   }
 }

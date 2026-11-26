@@ -20,18 +20,21 @@ public record TaskEvent(
     List<String> expectedOutputs,
     String contentHash) {
 
-  /** Arma la tarea para el contenido actual del snippet, con un {@code taskId} nuevo. */
-  public static TaskEvent of(Snippet snippet, TaskType type, String rules) {
+  /**
+   * Arma la tarea para el contenido actual del snippet ({@code content}, leído de {@code
+   * SnippetStorage}), con un {@code taskId} nuevo.
+   */
+  public static TaskEvent of(Snippet snippet, String content, TaskType type, String rules) {
     return new TaskEvent(
         UUID.randomUUID(),
         snippet.getId(),
         type,
         snippet.getLanguage(),
         snippet.getVersion(),
-        snippet.getContent(),
+        content,
         rules,
         List.of(),
         List.of(),
-        ContentHash.sha256(snippet.getContent()));
+        ContentHash.sha256(content));
   }
 }

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 
 import com.ingsis.snippets.clients.permission.PermissionClient;
@@ -18,6 +19,8 @@ import com.ingsis.snippets.snippet.model.FormatStatus;
 import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
+import com.ingsis.snippets.tasks.ContentHash;
 import com.ingsis.snippets.tasks.TaskEvent;
 import com.ingsis.snippets.tasks.TaskPublisher;
 import com.ingsis.snippets.tasks.TaskType;
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import tools.jackson.databind.JsonNode;
@@ -52,6 +56,8 @@ class RuleApplierTest {
 
   private RuleApplier applier;
 
+  @Mock private SnippetStorage storage;
+
   @BeforeEach
   void setUp() {
     TasksProperties props =
@@ -67,7 +73,8 @@ class RuleApplierTest {
             Duration.ofSeconds(30),
             5,
             Duration.ofSeconds(2));
-    applier = new RuleApplier(snippets, permissions, rules, publisher, props);
+    applier = new RuleApplier(snippets, permissions, rules, publisher, props, storage);
+    lenient().when(storage.get(ArgumentMatchers.any())).thenReturn("from-storage");
   }
 
   private Snippet snippet(String lang) {
@@ -103,6 +110,10 @@ class RuleApplierTest {
     List<TaskEvent> events = published();
     assertThat(events).hasSize(2);
     assertThat(events).allMatch(e -> e.type() == TaskType.LINT && e.rules().equals("{\"a\":1}"));
+    assertThat(events)
+        .allMatch(e ->
+            e.content().equals("from-storage")
+                && e.contentHash().equals(ContentHash.sha256("from-storage")));
   }
 
   @Test

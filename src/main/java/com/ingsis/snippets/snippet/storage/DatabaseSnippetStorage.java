@@ -3,14 +3,15 @@ package com.ingsis.snippets.snippet.storage;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
 import java.util.UUID;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 /**
- * Implementación de este paso (D06): el contenido es la columna {@code content} de la fila del
- * snippet. {@code save} asume que la fila ya existe (el snippet se crea con su contenido inicial);
- * acá solo se reescribe.
+ * Modo {@code database} (default): el contenido es la columna {@code content} de la fila del
+ * snippet. {@code save} asume que la fila ya existe; acá solo se reescribe.
  */
 @Component
+@ConditionalOnProperty(name = "snippets.storage", havingValue = "database", matchIfMissing = true)
 class DatabaseSnippetStorage implements SnippetStorage {
 
   private final SnippetRepository snippets;
@@ -28,12 +29,18 @@ class DatabaseSnippetStorage implements SnippetStorage {
 
   @Override
   public String get(UUID snippetId) {
-    return require(snippetId).getContent();
+    String content = require(snippetId).getContent();
+    if (content == null) {
+      throw new IllegalStateException(
+          "Snippet " + snippetId + " has no content in the database (was it moved to Assets?)");
+    }
+    return content;
   }
 
+  /** El contenido vive en la fila: se va cuando quien llama borra el snippet. */
   @Override
   public void remove(UUID snippetId) {
-    snippets.deleteById(snippetId);
+    // nada que borrar aparte de la fila
   }
 
   private Snippet require(UUID snippetId) {

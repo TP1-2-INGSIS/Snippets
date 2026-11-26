@@ -3,6 +3,7 @@ package com.ingsis.snippets.tasks;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -10,6 +11,7 @@ import com.ingsis.snippets.snippet.model.FormatStatus;
 import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import com.ingsis.snippets.tasks.TaskResultEvent.ResultError;
 import java.util.List;
 import java.util.Optional;
@@ -17,6 +19,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,13 +32,16 @@ class ResultProcessorTest {
 
   @Mock private SnippetRepository snippets;
 
+  @Mock private SnippetStorage storage;
+
   private ResultProcessor processor;
 
   private Snippet snippet;
 
   @BeforeEach
   void setUp() {
-    processor = new ResultProcessor(snippets);
+    processor = new ResultProcessor(snippets, storage);
+    lenient().when(storage.get(ArgumentMatchers.any())).thenReturn("from-storage");
     snippet = new Snippet(UUID.randomUUID(), "n", null, "printscript", "1.1", "code", "ana");
     snippet.markLintPending(java.time.Instant.now(), 0, LINT_TASK);
     snippet.markFormatPending(java.time.Instant.now(), 0, FORMAT_TASK);
@@ -48,7 +54,7 @@ class ResultProcessorTest {
         type == TaskType.FORMAT ? FORMAT_TASK : LINT_TASK,
         snippet.getId(),
         type,
-        ContentHash.sha256("code"),
+        ContentHash.sha256("from-storage"),
         1,
         status,
         status == ResultStatus.OK,
@@ -99,7 +105,6 @@ class ResultProcessorTest {
 
     assertThat(snippet.getFormattedContent()).isEqualTo("pretty");
     assertThat(snippet.getFormatStatus()).isEqualTo(FormatStatus.DONE);
-    assertThat(snippet.getContent()).isEqualTo("code");
   }
 
   @Test
@@ -176,7 +181,7 @@ class ResultProcessorTest {
             UUID.randomUUID(),
             snippet.getId(),
             TaskType.LINT,
-            ContentHash.sha256("code"),
+            ContentHash.sha256("from-storage"),
             1,
             ResultStatus.OK,
             true,

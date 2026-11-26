@@ -12,6 +12,7 @@ import com.ingsis.snippets.snippet.model.FormatStatus;
 import com.ingsis.snippets.snippet.model.LintStatus;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import com.ingsis.snippets.tasks.TaskEvent;
 import com.ingsis.snippets.tasks.TaskPublisher;
 import com.ingsis.snippets.tasks.TaskType;
@@ -51,17 +52,21 @@ public class RuleApplier {
 
   private final TasksProperties properties;
 
+  private final SnippetStorage storage;
+
   public RuleApplier(
       SnippetRepository snippets,
       PermissionClient permissions,
       RulesService rules,
       TaskPublisher publisher,
-      TasksProperties properties) {
+      TasksProperties properties,
+      SnippetStorage storage) {
     this.snippets = snippets;
     this.permissions = permissions;
     this.rules = rules;
     this.publisher = publisher;
     this.properties = properties;
+    this.storage = storage;
   }
 
   /**
@@ -94,7 +99,7 @@ public class RuleApplier {
       if (!snippet.getLanguage().equals(languageId)) {
         continue;
       }
-      TaskEvent event = TaskEvent.of(snippet, type(kind), rulesJson);
+      TaskEvent event = TaskEvent.of(snippet, storage.get(snippet.getId()), type(kind), rulesJson);
       markPending(snippet, kind, now, 0, event.taskId());
       events.add(event);
     }
@@ -188,7 +193,8 @@ public class RuleApplier {
     try {
       JsonNode config =
           rules.get(new CurrentUser(snippet.getOwnerId()), snippet.getLanguage(), kind).config();
-      TaskEvent event = TaskEvent.of(snippet, type(kind), config.toString());
+      TaskEvent event =
+          TaskEvent.of(snippet, storage.get(snippet.getId()), type(kind), config.toString());
       markPending(snippet, kind, now, attempts + 1, event.taskId());
       events.add(event);
     } catch (RuntimeException ex) {

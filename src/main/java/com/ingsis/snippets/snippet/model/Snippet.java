@@ -12,16 +12,21 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Un snippet (§4). {@code content} se accede solo vía {@link SnippetStorage} (D06), pero vive en
- * esta misma fila por ahora. {@code ownerId} es desnormalizado para mostrar y ordenar: NO se usa
- * para autorizar (D05). {@code lintStatus} se persiste (D08).
+ * Un snippet (§4). {@code content} se accede solo vía {@code SnippetStorage} (D06): en modo {@code
+ * database} vive en esta fila; en modo {@code assets} es {@code null} (el contenido está en Assets)
+ * salvo en filas viejas que el migrador todavía no movió. {@code @DynamicUpdate}: un UPDATE escribe
+ * solo las columnas modificadas, así una entidad vieja no vuelve a poblar {@code content}. {@code
+ * ownerId} es desnormalizado para mostrar y ordenar: NO se usa para autorizar (D05). {@code
+ * lintStatus} se persiste (D08).
  */
 @Entity
+@DynamicUpdate
 @Table(name = "snippet")
 public class Snippet {
 
@@ -38,8 +43,7 @@ public class Snippet {
   @Column(nullable = false)
   private String version;
 
-  @Column(nullable = false)
-  private String content;
+  @Nullable @Column private String content;
 
   @Nullable
   @Column(name = "formatted_content")
@@ -98,7 +102,7 @@ public class Snippet {
       @Nullable String description,
       String language,
       String version,
-      String content,
+      @Nullable String content,
       String ownerId) {
     this.id = id;
     this.name = name;
@@ -148,11 +152,11 @@ public class Snippet {
     this.version = version;
   }
 
-  public String getContent() {
+  public @Nullable String getContent() {
     return content;
   }
 
-  public void setContent(String content) {
+  public void setContent(@Nullable String content) {
     this.content = content;
   }
 

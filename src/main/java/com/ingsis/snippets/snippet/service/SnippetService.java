@@ -22,6 +22,7 @@ import com.ingsis.snippets.snippet.event.SnippetContentChanged;
 import com.ingsis.snippets.snippet.model.Relation;
 import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
+import com.ingsis.snippets.snippet.storage.SnippetStorage;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
@@ -49,19 +50,23 @@ public class SnippetService {
 
   private final ApplicationEventPublisher events;
 
+  private final SnippetStorage storage;
+
   public SnippetService(
       SnippetRepository snippets,
       LanguageClient language,
       PermissionClient permissions,
       AuthorizationService authorization,
       RulesService rules,
-      ApplicationEventPublisher events) {
+      ApplicationEventPublisher events,
+      SnippetStorage storage) {
     this.snippets = snippets;
     this.language = language;
     this.permissions = permissions;
     this.authorization = authorization;
     this.rules = rules;
     this.events = events;
+    this.storage = storage;
   }
 
   /** Crea con compensación (D10): validar → lintear → guardar → grant OWNER. */
@@ -76,19 +81,26 @@ public class SnippetService {
     validate(languageId, content, version);
 
     Snippet snippet =
-        new Snippet(UUID.randomUUID(), name, description, languageId, version, content, user.id());
+        new Snippet(UUID.randomUUID(), name, description, languageId, version, null, user.id());
     List<SourceError> violations =
         language.lint(languageId, content, version, lintRules(user, languageId));
     LintResults.apply(snippet, violations);
     snippet = snippets.save(snippet);
 
     try {
+      storage.create(snippet.getId(), content);
+    } catch (RuntimeException ex) {
+      snippets.delete(snippet);
+      throw new DownstreamException("Could not store content; snippet rolled back", ex);
+    }
+    try {
       permissions.grant(snippet.getId(), user.id(), PermissionRole.OWNER);
     } catch (RuntimeException ex) {
+      removeContentQuietly(snippet.getId());
       snippets.delete(snippet);
       throw new DownstreamException("Could not grant ownership; snippet rolled back", ex);
     }
-    return detail(snippet, PermissionRole.OWNER);
+    return detail(snippet, content, PermissionRole.OWNER);
   }
 
   /** Formatea contenido arbitrario con las reglas FORMAT del usuario; no persiste nada. */
@@ -102,7 +114,7 @@ public class SnippetService {
   public SnippetDetail get(CurrentUser user, UUID id) {
     PermissionRole role = authorization.require(user, id, PermissionAction.READ);
     Snippet snippet = load(id);
-    return detail(snippet, role);
+    return detail(snippet, storage.get(id), role);
   }
 
   @Transactional(readOnly = true)
@@ -152,6 +164,7 @@ public class SnippetService {
     Snippet snippet = load(id);
 
     boolean contentChanged = false;
+    String newContent = request.content();
     if (request.name() != null) {
       snippet.setName(request.name());
     }
@@ -166,35 +179,43 @@ public class SnippetService {
       snippet.setVersion(request.version());
       contentChanged = true;
     }
-    if (request.content() != null) {
-      snippet.setContent(request.content());
+    if (newContent != null) {
       contentChanged = true;
     }
 
+    String content = newContent;
     if (contentChanged) {
+      if (content == null) {
+        content = storage.get(id); // cambió solo language o version
+      }
       snippet.setFormattedContent(null);
       snippet.setFormatStatus(com.ingsis.snippets.snippet.model.FormatStatus.DONE);
-      validate(snippet.getLanguage(), snippet.getContent(), snippet.getVersion());
+      validate(snippet.getLanguage(), content, snippet.getVersion());
       List<SourceError> violations =
           language.lint(
               snippet.getLanguage(),
-              snippet.getContent(),
+              content,
               snippet.getVersion(),
               lintRules(user, snippet.getLanguage()));
       LintResults.apply(snippet, violations);
     }
     snippet = snippets.save(snippet);
 
+    // El contenido se escribe al final: si falla, la transacción revierte la metadata.
+    if (newContent != null) {
+      storage.save(id, newContent);
+    }
     if (contentChanged) {
       events.publishEvent(new SnippetContentChanged(snippet.getId()));
     }
-    return detail(snippet, role);
+    return detail(snippet, content != null ? content : storage.get(id), role);
   }
 
   @Transactional
   public void delete(CurrentUser user, UUID id) {
     authorization.require(user, id, PermissionAction.WRITE);
     Snippet snippet = load(id);
+    storage.remove(id); // si Assets falla no se borra nada y se puede reintentar
     snippets.delete(snippet);
     try {
       permissions.deleteAll(id);
@@ -222,7 +243,16 @@ public class SnippetService {
         .orElseThrow(() -> new NotFoundException("Snippet " + id + " not found"));
   }
 
-  private SnippetDetail detail(Snippet s, PermissionRole role) {
+  private void removeContentQuietly(UUID id) {
+    try {
+      storage.remove(id);
+    } catch (RuntimeException ex) {
+      org.slf4j.LoggerFactory.getLogger(SnippetService.class)
+          .warn("Could not remove content of snippet {} during rollback", id, ex);
+    }
+  }
+
+  private SnippetDetail detail(Snippet s, String content, PermissionRole role) {
     List<String> sharedWith = null;
     if (role == PermissionRole.OWNER) {
       sharedWith =
@@ -237,7 +267,7 @@ public class SnippetService {
         s.getDescription(),
         s.getLanguage(),
         s.getVersion(),
-        s.getContent(),
+        content,
         s.getOwnerId(),
         role,
         s.getLintStatus(),
