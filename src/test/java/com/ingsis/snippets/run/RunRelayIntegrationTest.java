@@ -131,6 +131,7 @@ class RunRelayIntegrationTest {
   @BeforeEach
   void reset() {
     LANGUAGE_SESSIONS.clear();
+    FakeLanguage.CLOSED_BY_RELAY.clear();
     STARTS.clear();
   }
 
@@ -268,7 +269,17 @@ class RunRelayIntegrationTest {
 
     Client ui = connect("/snippets/" + id + "/run?userId=user-ana");
     ui.send("{\"type\":\"stop\"}");
-    assertThat(ui.next()).contains("\"type\":\"finished\"");
+    assertThat(ui.closed.poll(5, TimeUnit.SECONDS).getCode()).isEqualTo(1000);
+    assertThat(ui.messages).isEmpty();
+  }
+
+  @Test
+  void programErrorIsRelayedThenClosedWith1000() throws Exception {
+    UUID id = snippet("failing");
+    allow("user-ana", id);
+
+    Client ui = connect("/snippets/" + id + "/run?userId=user-ana");
+    assertThat(ui.next()).contains("\"type\":\"error\"").contains("boom");
     assertThat(ui.closed.poll(5, TimeUnit.SECONDS).getCode()).isEqualTo(1000);
   }
 
@@ -288,8 +299,16 @@ class RunRelayIntegrationTest {
     allow("user-ana", id);
 
     Client ui = connect("/snippets/" + id + "/run?userId=user-ana");
+    // Wait for the Language session of this execution, then close the UI side.
+    for (int i = 0; i < 50 && LANGUAGE_SESSIONS.isEmpty(); i++) {
+      Thread.sleep(100);
+    }
+    assertThat(LANGUAGE_SESSIONS).hasSize(1);
+    String languageSession = LANGUAGE_SESSIONS.get(0);
     ui.session.close();
-    assertThat(FakeLanguage.CLOSED_BY_RELAY.poll(5, TimeUnit.SECONDS)).isNotNull();
+    // Shorter than the 2 s idle timeout, so the idle safety net can't be what closed it.
+    assertThat(FakeLanguage.CLOSED_BY_RELAY.poll(1500, TimeUnit.MILLISECONDS))
+        .isEqualTo(languageSession);
   }
 
   private static String token(String subject) throws Exception {
@@ -409,6 +428,10 @@ class RunRelayIntegrationTest {
                   new TextMessage("{\"type\":\"input-request\",\"prompt\":\"name?\"}"));
             }
             case "violation" -> session.close(CloseStatus.POLICY_VIOLATION);
+            case "failing" -> {
+              session.sendMessage(new TextMessage("{\"type\":\"error\",\"message\":\"boom\"}"));
+              session.close(CloseStatus.NORMAL);
+            }
             case "crash" -> session.close(new CloseStatus(1011, "boom"));
             default -> {
               // "silent" and "stoppable" wait for the other side.
@@ -419,7 +442,7 @@ class RunRelayIntegrationTest {
           session.sendMessage(new TextMessage("{\"type\":\"finished\"}"));
           session.close(CloseStatus.NORMAL);
         } else if (payload.contains("\"type\":\"stop\"")) {
-          session.sendMessage(new TextMessage("{\"type\":\"finished\"}"));
+          // Like the real Language: closes 1000 and sends no "finished".
           session.close(CloseStatus.NORMAL);
         }
       }

@@ -205,6 +205,10 @@ class RunHandler extends TextWebSocketHandler {
 
     void attach(WebSocketSession language) {
       this.language = language;
+      // The relay may have been closed while connecting: don't leak the new session.
+      if (closed.get()) {
+        closeQuietly(language, CloseStatus.NORMAL);
+      }
     }
 
     synchronized void touch() {
