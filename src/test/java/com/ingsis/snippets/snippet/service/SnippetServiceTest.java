@@ -221,6 +221,30 @@ class SnippetServiceTest {
   }
 
   @Test
+  void updateLanguageOnlyOrVersionOnlyClearsFormattedContent() {
+    for (UpdateSnippetRequest request :
+        List.of(
+            new UpdateSnippetRequest(null, null, "printscript", null, null),
+            new UpdateSnippetRequest(null, null, null, "1.0", null))) {
+      UUID id = UUID.randomUUID();
+      Snippet existing = snippet(id);
+      existing.setFormattedContent("println(1);\n");
+      given(authorization.require(ana, id, PermissionAction.WRITE))
+          .willReturn(PermissionRole.OWNER);
+      given(snippets.findById(id)).willReturn(Optional.of(existing));
+      given(language.validate(any(), any(), any()))
+          .willReturn(new ValidationResult(true, List.of()));
+      stubLintRules();
+      given(language.lint(any(), any(), any(), any())).willReturn(List.of());
+      given(snippets.save(any(Snippet.class))).willAnswer(i -> i.getArgument(0));
+
+      service.update(ana, id, request);
+
+      assertThat(existing.getFormattedContent()).isNull();
+    }
+  }
+
+  @Test
   void updateMetadataKeepsFormattedContent() {
     UUID id = UUID.randomUUID();
     Snippet existing = snippet(id);
