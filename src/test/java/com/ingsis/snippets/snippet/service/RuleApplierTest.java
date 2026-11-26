@@ -121,9 +121,10 @@ class RuleApplierTest {
   @Test
   void requeueStalledReEnqueuesAndCountsAttempts() {
     Snippet lint = snippet("printscript");
-    lint.markLintPending(Instant.now().minusSeconds(3600), 1);
+    lint.markLintPending(Instant.now().minusSeconds(3600), 1, UUID.randomUUID());
     Snippet format = snippet("printscript");
-    format.markFormatPending(Instant.now().minusSeconds(3600), 0);
+    format.markFormatPending(Instant.now().minusSeconds(3600), 0, UUID.randomUUID());
+    UUID oldLintTask = lint.getLintTaskId();
     given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
         .willReturn(List.of(lint));
     given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))
@@ -135,6 +136,7 @@ class RuleApplierTest {
 
     assertThat(requeued).isEqualTo(2);
     assertThat(lint.getLintAttempts()).isEqualTo(2);
+    assertThat(lint.getLintTaskId()).isNotEqualTo(oldLintTask);
     assertThat(format.getFormatAttempts()).isEqualTo(1);
     assertThat(published()).hasSize(2);
   }
@@ -142,9 +144,9 @@ class RuleApplierTest {
   @Test
   void requeueStalledGivesUpAfterMaxRequeues() {
     Snippet lint = snippet("printscript");
-    lint.markLintPending(Instant.now().minusSeconds(3600), 3);
+    lint.markLintPending(Instant.now().minusSeconds(3600), 3, UUID.randomUUID());
     Snippet format = snippet("printscript");
-    format.markFormatPending(Instant.now().minusSeconds(3600), 3);
+    format.markFormatPending(Instant.now().minusSeconds(3600), 3, UUID.randomUUID());
     given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
         .willReturn(List.of(lint));
     given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))
@@ -160,7 +162,7 @@ class RuleApplierTest {
   @Test
   void requeueStalledFailsTheSnippetWhenItsRulesCannotBeLoaded() {
     Snippet lint = snippet("cobol");
-    lint.markLintPending(Instant.now().minusSeconds(3600), 0);
+    lint.markLintPending(Instant.now().minusSeconds(3600), 0, UUID.randomUUID());
     given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
         .willReturn(List.of(lint));
     given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))

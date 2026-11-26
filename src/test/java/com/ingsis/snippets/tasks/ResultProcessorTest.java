@@ -23,6 +23,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ResultProcessorTest {
 
+  private static final UUID LINT_TASK = UUID.randomUUID();
+
+  private static final UUID FORMAT_TASK = UUID.randomUUID();
+
   @Mock private SnippetRepository snippets;
 
   private ResultProcessor processor;
@@ -33,15 +37,15 @@ class ResultProcessorTest {
   void setUp() {
     processor = new ResultProcessor(snippets);
     snippet = new Snippet(UUID.randomUUID(), "n", null, "printscript", "1.1", "code", "ana");
-    snippet.markLintPending(java.time.Instant.now(), 0);
-    snippet.markFormatPending(java.time.Instant.now(), 0);
+    snippet.markLintPending(java.time.Instant.now(), 0, LINT_TASK);
+    snippet.markFormatPending(java.time.Instant.now(), 0, FORMAT_TASK);
     given(snippets.findById(snippet.getId())).willReturn(Optional.of(snippet));
   }
 
   private TaskResultEvent result(
       TaskType type, ResultStatus status, List<ResultError> errors, String formatted) {
     return new TaskResultEvent(
-        UUID.randomUUID(),
+        type == TaskType.FORMAT ? FORMAT_TASK : LINT_TASK,
         snippet.getId(),
         type,
         ContentHash.sha256("code"),
@@ -162,6 +166,28 @@ class ResultProcessorTest {
 
     assertThat(processor.apply(deleted)).isFalse();
     assertThat(processor.apply(result(TaskType.TEST, ResultStatus.OK, null, null))).isFalse();
+    verify(snippets, never()).save(any());
+  }
+
+  @Test
+  void resultOfAReplacedTaskIsIgnored() {
+    TaskResultEvent old =
+        new TaskResultEvent(
+            UUID.randomUUID(),
+            snippet.getId(),
+            TaskType.LINT,
+            ContentHash.sha256("code"),
+            1,
+            ResultStatus.OK,
+            true,
+            List.of(),
+            null,
+            null,
+            null,
+            null);
+
+    assertThat(processor.apply(old)).isFalse();
+    assertThat(snippet.getLintStatus()).isEqualTo(LintStatus.PENDING);
     verify(snippets, never()).save(any());
   }
 }

@@ -75,8 +75,9 @@ public class RuleApplier {
       if (!snippet.getLanguage().equals(languageId)) {
         continue;
       }
-      markPending(snippet, kind, now, 0);
-      events.add(TaskEvent.of(snippet, type(kind), rulesJson));
+      TaskEvent event = TaskEvent.of(snippet, type(kind), rulesJson);
+      markPending(snippet, kind, now, 0, event.taskId());
+      events.add(event);
     }
     publisher.publishAfterCommit(events);
     return events.size();
@@ -114,19 +115,21 @@ public class RuleApplier {
     try {
       JsonNode config =
           rules.get(new CurrentUser(snippet.getOwnerId()), snippet.getLanguage(), kind).config();
-      markPending(snippet, kind, now, attempts + 1);
-      events.add(TaskEvent.of(snippet, type(kind), config.toString()));
+      TaskEvent event = TaskEvent.of(snippet, type(kind), config.toString());
+      markPending(snippet, kind, now, attempts + 1, event.taskId());
+      events.add(event);
     } catch (RuntimeException ex) {
       log.warn("Could not requeue {} of snippet {}", kind, snippet.getId(), ex);
       markFailed(snippet, kind);
     }
   }
 
-  private static void markPending(Snippet snippet, RuleKind kind, Instant now, int attempts) {
+  private static void markPending(
+      Snippet snippet, RuleKind kind, Instant now, int attempts, UUID taskId) {
     if (kind == RuleKind.LINT) {
-      snippet.markLintPending(now, attempts);
+      snippet.markLintPending(now, attempts, taskId);
     } else {
-      snippet.markFormatPending(now, attempts);
+      snippet.markFormatPending(now, attempts, taskId);
     }
   }
 

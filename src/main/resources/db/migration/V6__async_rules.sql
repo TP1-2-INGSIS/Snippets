@@ -6,5 +6,8 @@ ALTER TABLE snippet ADD COLUMN lint_requested_at   TIMESTAMPTZ;
 ALTER TABLE snippet ADD COLUMN lint_attempts       INT         NOT NULL DEFAULT 0;
 ALTER TABLE snippet ADD COLUMN format_requested_at TIMESTAMPTZ;
 ALTER TABLE snippet ADD COLUMN format_attempts     INT         NOT NULL DEFAULT 0;
+-- Ultima tarea encolada por tipo: un resultado con otro taskId es viejo y se descarta.
+ALTER TABLE snippet ADD COLUMN lint_task_id        UUID;
+ALTER TABLE snippet ADD COLUMN format_task_id      UUID;
 
 CREATE INDEX idx_snippet_format_status ON snippet (format_status);

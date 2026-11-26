@@ -6,6 +6,7 @@ import com.ingsis.snippets.snippet.model.Snippet;
 import com.ingsis.snippets.snippet.model.SourceViolation;
 import com.ingsis.snippets.snippet.repository.SnippetRepository;
 import java.util.List;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -52,9 +53,21 @@ public class ResultProcessor {
     return true;
   }
 
-  /** El snippet cambió desde que se encoló la tarea: el hash del eco no coincide. */
+  /**
+   * Viejo si el snippet cambió desde que se encoló la tarea (el hash del eco no coincide) o si no
+   * es la última tarea encolada de ese tipo (otro cambio de reglas o un re-encolado la reemplazó).
+   */
   static boolean isStale(Snippet snippet, TaskResultEvent result) {
-    return !ContentHash.sha256(snippet.getContent()).equals(result.contentHash());
+    if (!ContentHash.sha256(snippet.getContent()).equals(result.contentHash())) {
+      return true;
+    }
+    UUID current =
+        switch (result.type()) {
+          case LINT -> snippet.getLintTaskId();
+          case FORMAT -> snippet.getFormatTaskId();
+          default -> null;
+        };
+    return current != null && !current.equals(result.taskId());
   }
 
   private static void applyLint(Snippet snippet, TaskResultEvent result) {

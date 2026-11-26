@@ -139,10 +139,23 @@ class AsyncRulesIntegrationTest {
       String status,
       String errorsJson,
       String formatted) {
+    UUID current =
+        type.equals("LINT") ? reload(snippet).getLintTaskId() : reload(snippet).getFormatTaskId();
+    sendResultWithTask(snippet, current, type, hash, status, errorsJson, formatted);
+  }
+
+  private void sendResultWithTask(
+      Snippet snippet,
+      UUID taskId,
+      String type,
+      String hash,
+      String status,
+      String errorsJson,
+      String formatted) {
     String json =
         "{\"taskId\":\"%s\",\"snippetId\":\"%s\",\"type\":\"%s\",\"contentHash\":\"%s\",\"attempts\":1,\"status\":\"%s\",\"success\":%s,\"errors\":%s,\"formattedContent\":%s}"
             .formatted(
-                UUID.randomUUID(),
+                taskId,
                 snippet.getId(),
                 type,
                 hash,
@@ -223,11 +236,11 @@ class AsyncRulesIntegrationTest {
     Snippet fmt = save("printscript");
     Snippet fmtFail = save("printscript");
     for (Snippet s : List.of(ok, bad, invalid)) {
-      s.markLintPending(Instant.now(), 0);
+      s.markLintPending(Instant.now(), 0, UUID.randomUUID());
       snippets.save(s);
     }
     for (Snippet s : List.of(fmt, fmtFail)) {
-      s.markFormatPending(Instant.now(), 0);
+      s.markFormatPending(Instant.now(), 0, UUID.randomUUID());
       snippets.save(s);
     }
 
@@ -266,10 +279,10 @@ class AsyncRulesIntegrationTest {
   @Test
   void staleResultIsIgnoredAndAcked() throws Exception {
     Snippet s = save("printscript");
-    s.markLintPending(Instant.now(), 0);
+    s.markLintPending(Instant.now(), 0, UUID.randomUUID());
     snippets.save(s);
     Snippet marker = save("printscript");
-    marker.markLintPending(Instant.now(), 0);
+    marker.markLintPending(Instant.now(), 0, UUID.randomUUID());
     snippets.save(marker);
 
     sendResult(s, "LINT", ContentHash.sha256("old content"), "OK", "[]", null);
@@ -284,11 +297,11 @@ class AsyncRulesIntegrationTest {
   void resultOfADeletedSnippetIsAcked() throws Exception {
     Snippet gone = save("printscript");
     Snippet marker = save("printscript");
-    marker.markLintPending(Instant.now(), 0);
+    marker.markLintPending(Instant.now(), 0, UUID.randomUUID());
     snippets.save(marker);
     snippets.delete(gone);
 
-    sendResult(gone, "LINT", hash(gone), "OK", "[]", null);
+    sendResultWithTask(gone, UUID.randomUUID(), "LINT", hash(gone), "OK", "[]", null);
     sendResult(marker, "LINT", hash(marker), "OK", "[]", null);
 
     await(() -> reload(marker).getLintStatus() == LintStatus.COMPLIANT);
@@ -298,7 +311,7 @@ class AsyncRulesIntegrationTest {
   @Test
   void pendingEntriesAreProcessedAfterAConsumerRestart() throws Exception {
     Snippet s = save("printscript");
-    s.markLintPending(Instant.now(), 0);
+    s.markLintPending(Instant.now(), 0, UUID.randomUUID());
     snippets.save(s);
 
     consumer.stop();
@@ -322,7 +335,7 @@ class AsyncRulesIntegrationTest {
   @Test
   void reaperReEnqueuesStalledTasksAndEventuallyFailsThem() throws Exception {
     Snippet s = save("printscript");
-    s.markLintPending(Instant.now().minus(Duration.ofHours(1)), 0);
+    s.markLintPending(Instant.now().minus(Duration.ofHours(1)), 0, UUID.randomUUID());
     snippets.save(s);
     Instant later = Instant.now().plus(Duration.ofHours(1));
 
@@ -341,5 +354,60 @@ class AsyncRulesIntegrationTest {
 
     assertThat(reload(s).getLintStatus()).isEqualTo(LintStatus.FAILED);
     assertThat(tasks()).hasSize(3);
+  }
+
+  @Test
+  void lateResultOfAnOlderRulesChangeIsIgnored() throws Exception {
+    Snippet s = save("printscript");
+    Snippet marker = save("printscript");
+    stubOwned(s, marker);
+
+    putRules("lint", 2);
+    UUID first = reload(s).getLintTaskId();
+    putRules("lint", 2);
+    UUID second = reload(s).getLintTaskId();
+    assertThat(second).isNotEqualTo(first);
+
+    // The newest result arrives first, then the older one arrives last.
+    sendResultWithTask(s, second, "LINT", hash(s), "OK", "[]", null);
+    await(() -> reload(s).getLintStatus() == LintStatus.COMPLIANT);
+    sendResultWithTask(
+        s,
+        first,
+        "LINT",
+        hash(s),
+        "OK",
+        "[{\"rule\":\"old\",\"message\":\"old rules\",\"line\":1,\"column\":1}]",
+        null);
+    sendResult(marker, "LINT", hash(marker), "OK", "[]", null);
+
+    await(() -> reload(marker).getLintStatus() == LintStatus.COMPLIANT);
+    await(() -> pendingEntries() == 0);
+    assertThat(reload(s).getLintStatus()).isEqualTo(LintStatus.COMPLIANT);
+    assertThat(reload(s).getLintViolations()).isEmpty();
+  }
+
+  @Test
+  void oldResultOfAReEnqueuedTaskIsIgnored() throws Exception {
+    Snippet s = save("printscript");
+    UUID original = UUID.randomUUID();
+    s.markLintPending(Instant.now().minus(Duration.ofHours(1)), 0, original);
+    snippets.save(s);
+    Snippet marker = save("printscript");
+    marker.markLintPending(Instant.now().plus(Duration.ofHours(3)), 0, UUID.randomUUID());
+    snippets.save(marker);
+
+    assertThat(reaper.reap(Instant.now().plus(Duration.ofHours(1)))).isEqualTo(1);
+    UUID requeued = reload(s).getLintTaskId();
+    assertThat(requeued).isNotEqualTo(original);
+
+    sendResultWithTask(s, original, "LINT", hash(s), "FAILED", "[]", null);
+    sendResult(marker, "LINT", hash(marker), "OK", "[]", null);
+    await(() -> reload(marker).getLintStatus() == LintStatus.COMPLIANT);
+    await(() -> pendingEntries() == 0);
+    assertThat(reload(s).getLintStatus()).isEqualTo(LintStatus.PENDING);
+
+    sendResultWithTask(s, requeued, "LINT", hash(s), "OK", "[]", null);
+    await(() -> reload(s).getLintStatus() == LintStatus.COMPLIANT);
   }
 }

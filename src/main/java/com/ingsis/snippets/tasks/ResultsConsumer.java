@@ -50,6 +50,11 @@ public class ResultsConsumer implements SmartLifecycle {
 
   private final Map<String, Integer> failures = new HashMap<>();
 
+  /**
+   * Hasta cuándo no se reintenta una entrada que falló (backoff corto ante errores transitorios).
+   */
+  private final Map<String, Long> retryAt = new HashMap<>();
+
   private volatile boolean running;
 
   private Thread thread;
@@ -201,14 +206,23 @@ public class ResultsConsumer implements SmartLifecycle {
   }
 
   private int handle(List<MapRecord<String, Object, Object>> records) {
+    int handled = 0;
     for (MapRecord<String, Object, Object> record : records) {
-      process(record);
+      if (process(record)) {
+        handled++;
+      }
     }
-    return records.size();
+    return handled;
   }
 
-  private void process(MapRecord<String, Object, Object> record) {
+  /**
+   * @return false si la entrada sigue en backoff y se salteó
+   */
+  private boolean process(MapRecord<String, Object, Object> record) {
     String id = record.getId().getValue();
+    if (retryAt.getOrDefault(id, 0L) > System.currentTimeMillis()) {
+      return false;
+    }
     Object data = record.getValue().get("data");
     TaskResultEvent event;
     try {
@@ -216,11 +230,12 @@ public class ResultsConsumer implements SmartLifecycle {
     } catch (RuntimeException ex) {
       log.warn("Discarding malformed result {}", id, ex);
       ack(record.getId());
-      return;
+      return true;
     }
     try {
       processor.apply(event);
       failures.remove(id);
+      retryAt.remove(id);
       ack(record.getId());
     } catch (RuntimeException ex) {
       long deliveries =
@@ -228,11 +243,14 @@ public class ResultsConsumer implements SmartLifecycle {
       if (deliveries >= properties.maxDeliveries()) {
         log.error("Dropping result {} after {} deliveries", id, deliveries, ex);
         failures.remove(id);
+        retryAt.remove(id);
         ack(record.getId());
       } else {
+        retryAt.put(id, System.currentTimeMillis() + 2000L * deliveries);
         log.warn("Applying result {} failed (delivery {}); will retry", id, deliveries, ex);
       }
     }
+    return true;
   }
 
   private long deliveryCount(RecordId id) {
