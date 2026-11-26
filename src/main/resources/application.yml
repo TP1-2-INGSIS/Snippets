@@ -12,6 +12,14 @@ spring:
   flyway:
     locations: classpath:db/migration
 
+# D02: identity. Auth0 access tokens are validated when AUTH0_* are set; X-User-Id is only
+# accepted when AUTH_HEADER_IDENTITY_ENABLED=true (tests, local, e2e).
+auth:
+  issuer-uri: ${AUTH0_ISSUER_URI:}
+  audience: ${AUTH0_AUDIENCE:}
+  jwks-uri: ${AUTH0_JWKS_URI:}
+  header-identity-enabled: ${AUTH_HEADER_IDENTITY_ENABLED:false}
+
 server:
   port: ${PORT:8080}
 
