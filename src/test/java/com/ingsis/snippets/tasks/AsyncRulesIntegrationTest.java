@@ -5,6 +5,11 @@ import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.wireMockConfig;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.timeout;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -37,6 +42,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -63,6 +69,8 @@ class AsyncRulesIntegrationTest {
   static void properties(DynamicPropertyRegistry registry) {
     registry.add("services.permission.url", DOWNSTREAM::baseUrl);
     registry.add("services.language.url", DOWNSTREAM::baseUrl);
+    registry.add("tasks.retry-backoff", () -> "100ms");
+    registry.add("tasks.reaper-interval", () -> "1h");
   }
 
   @AfterAll
@@ -74,7 +82,9 @@ class AsyncRulesIntegrationTest {
 
   @Autowired private SnippetRepository snippets;
 
-  @Autowired private StringRedisTemplate redis;
+  @MockitoSpyBean private StringRedisTemplate redis;
+
+  @MockitoSpyBean private ResultProcessor processor;
 
   @Autowired private ObjectMapper mapper;
 
@@ -409,5 +419,75 @@ class AsyncRulesIntegrationTest {
 
     sendResultWithTask(s, requeued, "LINT", hash(s), "OK", "[]", null);
     await(() -> reload(s).getLintStatus() == LintStatus.COMPLIANT);
+  }
+
+  private TaskResultEvent resultOf(Snippet s) {
+    return argThat(e -> e != null && e.snippetId().equals(s.getId()));
+  }
+
+  @Test
+  void transientFailuresAreRetriedAndTheResultIsEventuallyApplied() throws Exception {
+    Snippet s = save("printscript");
+    s.markLintPending(Instant.now(), 0, UUID.randomUUID());
+    snippets.save(s);
+    doThrow(new IllegalStateException("db down"))
+        .doThrow(new IllegalStateException("db down"))
+        .doCallRealMethod()
+        .when(processor)
+        .apply(resultOf(s));
+
+    sendResult(s, "LINT", hash(s), "OK", "[]", null);
+
+    await(() -> reload(s).getLintStatus() == LintStatus.COMPLIANT);
+    await(() -> pendingEntries() == 0);
+    verify(processor, times(3)).apply(resultOf(s));
+  }
+
+  @Test
+  void aResultThatFailsFiveTimesIsDroppedAndAcked() throws Exception {
+    Snippet s = save("printscript");
+    s.markLintPending(Instant.now(), 0, UUID.randomUUID());
+    snippets.save(s);
+    doThrow(new IllegalStateException("poison")).when(processor).apply(resultOf(s));
+
+    sendResult(s, "LINT", hash(s), "OK", "[]", null);
+
+    verify(processor, timeout(15000).times(props.maxDeliveries())).apply(resultOf(s));
+    await(() -> pendingEntries() == 0);
+    assertThat(reload(s).getLintStatus()).isEqualTo(LintStatus.PENDING);
+  }
+
+  @Test
+  void aFailedPublishStillReturns202AndTheReaperRecoversTheSnippet() throws Exception {
+    Snippet s = save("printscript");
+    stubOwned(s);
+    doThrow(new org.springframework.dao.QueryTimeoutException("redis down"))
+        .when(redis)
+        .opsForStream();
+    try {
+      putRules("lint", 1);
+    } finally {
+      org.mockito.Mockito.reset(redis);
+    }
+
+    assertThat(reload(s).getLintStatus()).isEqualTo(LintStatus.PENDING);
+    assertThat(reload(s).getLintRequestedAt()).isNotNull();
+    assertThat(tasks()).isEmpty();
+
+    assertThat(reaper.reap(Instant.now().plus(Duration.ofHours(1)))).isEqualTo(1);
+
+    assertThat(tasks()).hasSize(1);
+    assertThat(reload(s).getLintAttempts()).isEqualTo(1);
+  }
+
+  @Test
+  void pendingSnippetsWithoutRequestDateAreReaped() {
+    Snippet s = save("printscript"); // lint_status defaults to PENDING, requested_at is NULL
+    assertThat(reload(s).getLintRequestedAt()).isNull();
+
+    assertThat(reaper.reap(Instant.now())).isEqualTo(1);
+
+    assertThat(tasks()).hasSize(1);
+    assertThat(reload(s).getLintRequestedAt()).isNotNull();
   }
 }

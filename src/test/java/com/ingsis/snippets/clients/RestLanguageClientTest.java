@@ -187,6 +187,24 @@ class RestLanguageClientTest {
   }
 
   @Test
+  void invalidSourceReadsDiagnosticsAndPrefersThemOverDetails() {
+    server.stubFor(
+        post("/languages/printscript/format")
+            .willReturn(
+                aResponse()
+                    .withStatus(422)
+                    .withHeader("Content-Type", "application/json")
+                    .withBody(
+                        "{\"error\":\"INVALID_SOURCE\",\"message\":\"m\",\"details\":[],"
+                            + "\"diagnostics\":[{\"rule\":\"syntax\",\"line\":3}]}")));
+
+    assertThatThrownBy(() -> client.format("printscript", CONTENT, "1.1", null))
+        .isInstanceOfSatisfying(
+            InvalidSnippetException.class,
+            ex -> assertThat(ex.details()).hasSize(1).first().hasToString("{rule=syntax, line=3}"));
+  }
+
+  @Test
   void unknownClientErrorIsDownstream() {
     stubPostError("lint", 400, "BAD_REQUEST");
 

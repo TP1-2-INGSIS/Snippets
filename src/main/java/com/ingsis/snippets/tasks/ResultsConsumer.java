@@ -238,16 +238,19 @@ public class ResultsConsumer implements SmartLifecycle {
       retryAt.remove(id);
       ack(record.getId());
     } catch (RuntimeException ex) {
-      long deliveries =
-          Math.max(failures.merge(id, 1, Integer::sum), deliveryCount(record.getId()));
-      if (deliveries >= properties.maxDeliveries()) {
-        log.error("Dropping result {} after {} deliveries", id, deliveries, ex);
+      // Redis counts every re-read of our own pending list as a delivery, so attempts are counted
+      // here; Redis's count only seeds the first failure (e.g. entries delivered before a restart).
+      Integer prior = failures.get(id);
+      int failed = prior == null ? (int) Math.max(1, deliveryCount(record.getId())) : prior + 1;
+      if (failed >= properties.maxDeliveries()) {
+        log.error("Dropping result {} after {} deliveries", id, failed, ex);
         failures.remove(id);
         retryAt.remove(id);
         ack(record.getId());
       } else {
-        retryAt.put(id, System.currentTimeMillis() + 2000L * deliveries);
-        log.warn("Applying result {} failed (delivery {}); will retry", id, deliveries, ex);
+        failures.put(id, failed);
+        retryAt.put(id, System.currentTimeMillis() + properties.retryBackoff().toMillis() * failed);
+        log.warn("Applying result {} failed (delivery {}); will retry", id, failed, ex);
       }
     }
     return true;

@@ -47,6 +47,9 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `REDIS_STREAM_RESULTS` | `tasks:results` | Stream de resultados de los workers |
 | `REDIS_RESULTS_GROUP` | `snippet-service` | Consumer group de los resultados |
 | `TASK_TIMEOUT` | `5m` | Tiempo antes de que el reaper re-encole un snippet `PENDING` (máx. 3 veces, luego `FAILED`) |
+| `TASK_REAPER_INTERVAL` | `60s` | Cada cuánto corre el reaper |
+| `TASK_RETRY_BACKOFF` | `2s` | Espera (multiplicada por el nº de fallos) antes de reintentar un resultado que falló al aplicarse |
+| `TASKS_CONSUMER_ENABLED` | `true` | Apaga el consumidor de resultados (útil en tests o réplicas sin consumidor) |
 | `SERVICES_CONNECT_TIMEOUT` | `2s` | Timeout de conexión a los otros servicios |
 | `SERVICES_READ_TIMEOUT` | `10s` | Timeout de lectura (debe superar los 5 s de ejecución de Language) |
 
@@ -118,6 +121,9 @@ Al actualizar el contenido de un snippet, todos sus tests se corren automáticam
 El lint y el formato masivos son asíncronos (D14): los snippets quedan `PENDING`
 (`lint_status` / `format_status`), los workers de Language procesan las tareas desde Redis
 Streams y Snippets consume los resultados. Ver `docs/design-decisions.md`.
+Los demás parámetros (`tasks.claim-idle`, `tasks.claim-interval`, `tasks.max-deliveries`,
+`tasks.max-requeues`) están en `application.yml` y se pueden pisar con las variables de entorno
+de Spring (por ejemplo `TASKS_MAX_DELIVERIES`).
 
 ## Códigos de error
 

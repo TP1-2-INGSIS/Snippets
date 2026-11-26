@@ -54,4 +54,5 @@ tasks:
   claim-idle: 60s
   claim-interval: 30s
   max-deliveries: 5
+  retry-backoff: ${TASK_RETRY_BACKOFF:2s}
   reaper-interval: ${TASK_REAPER_INTERVAL:60s}

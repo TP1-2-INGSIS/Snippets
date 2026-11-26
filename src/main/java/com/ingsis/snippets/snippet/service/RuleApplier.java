@@ -4,6 +4,8 @@ import com.ingsis.snippets.clients.permission.PermissionClient;
 import com.ingsis.snippets.clients.permission.PermissionRole;
 import com.ingsis.snippets.clients.permission.SnippetPermission;
 import com.ingsis.snippets.common.identity.CurrentUser;
+import com.ingsis.snippets.rules.dto.RuleApplyResponse;
+import com.ingsis.snippets.rules.dto.RuleConfigResponse;
 import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
 import com.ingsis.snippets.snippet.model.FormatStatus;
@@ -58,6 +60,18 @@ public class RuleApplier {
   }
 
   /**
+   * Guarda la config y marca PENDING los snippets en la misma transacción; las tareas se publican
+   * después del commit. Si algo falla, no queda ni la config ni los estados a medias.
+   */
+  @Transactional
+  public RuleApplyResponse saveAndEnqueue(
+      CurrentUser user, String languageId, RuleKind kind, JsonNode config) {
+    RuleConfigResponse saved = rules.save(user, languageId, kind, config);
+    int queued = enqueue(user, languageId, kind, saved.config());
+    return new RuleApplyResponse(languageId, kind, saved.config(), queued);
+  }
+
+  /**
    * Marca PENDING y encola una tarea por cada snippet OWNER del usuario en el lenguaje.
    *
    * @return cuántas tareas se encolaron
@@ -93,12 +107,10 @@ public class RuleApplier {
   public int requeueStalled(Instant now) {
     Instant cutoff = now.minus(properties.timeout());
     List<TaskEvent> events = new ArrayList<>();
-    for (Snippet s :
-        snippets.findByLintStatusAndLintRequestedAtBefore(LintStatus.PENDING, cutoff)) {
+    for (Snippet s : snippets.findStalledLint(LintStatus.PENDING, cutoff)) {
       requeue(s, RuleKind.LINT, s.getLintAttempts(), now, events);
     }
-    for (Snippet s :
-        snippets.findByFormatStatusAndFormatRequestedAtBefore(FormatStatus.PENDING, cutoff)) {
+    for (Snippet s : snippets.findStalledFormat(FormatStatus.PENDING, cutoff)) {
       requeue(s, RuleKind.FORMAT, s.getFormatAttempts(), now, events);
     }
     publisher.publishAfterCommit(events);

@@ -89,7 +89,7 @@ public class RestLanguageClient implements LanguageClient {
       case "LANGUAGE_NOT_FOUND", "UNSUPPORTED_VERSION" ->
           new UnsupportedLanguageException(error.message());
       case "INVALID_RULES" -> new BadRequestException(error.message());
-      case "INVALID_SOURCE" -> new InvalidSnippetException(error.details());
+      case "INVALID_SOURCE" -> new InvalidSnippetException(error.violations());
       default -> null;
     };
   }

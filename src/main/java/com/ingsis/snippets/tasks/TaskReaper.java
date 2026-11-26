@@ -22,7 +22,9 @@ public class TaskReaper {
     this.applier = applier;
   }
 
-  @Scheduled(fixedDelayString = "${tasks.reaper-interval:60s}")
+  @Scheduled(
+      fixedDelayString = "${tasks.reaper-interval:60s}",
+      initialDelayString = "${tasks.reaper-interval:60s}")
   public void reap() {
     reap(Instant.now());
   }

@@ -65,7 +65,8 @@ class RuleApplierTest {
             Duration.ofMillis(10),
             Duration.ofSeconds(60),
             Duration.ofSeconds(30),
-            5);
+            5,
+            Duration.ofSeconds(2));
     applier = new RuleApplier(snippets, permissions, rules, publisher, props);
   }
 
@@ -105,6 +106,23 @@ class RuleApplierTest {
   }
 
   @Test
+  void saveAndEnqueueSavesTheConfigAndEnqueuesWithWhatWasSaved() {
+    Snippet a = snippet("printscript");
+    given(rules.save(ana, "printscript", RuleKind.LINT, config))
+        .willReturn(new RuleConfigResponse("printscript", RuleKind.LINT, false, config));
+    given(permissions.idsFor("user-ana", PermissionRole.OWNER))
+        .willReturn(List.of(new SnippetPermission(a.getId(), PermissionRole.OWNER)));
+    given(snippets.findAllById(any())).willReturn(List.of(a));
+
+    var response = applier.saveAndEnqueue(ana, "printscript", RuleKind.LINT, config);
+
+    assertThat(response.queued()).isEqualTo(1);
+    assertThat(response.kind()).isEqualTo(RuleKind.LINT);
+    assertThat(response.config()).isEqualTo(config);
+    assertThat(a.getLintTaskId()).isEqualTo(published().get(0).taskId());
+  }
+
+  @Test
   void enqueueFormatMarksFormatPending() {
     Snippet a = snippet("printscript");
     given(permissions.idsFor("user-ana", PermissionRole.OWNER))
@@ -125,10 +143,8 @@ class RuleApplierTest {
     Snippet format = snippet("printscript");
     format.markFormatPending(Instant.now().minusSeconds(3600), 0, UUID.randomUUID());
     UUID oldLintTask = lint.getLintTaskId();
-    given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
-        .willReturn(List.of(lint));
-    given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))
-        .willReturn(List.of(format));
+    given(snippets.findStalledLint(any(), any())).willReturn(List.of(lint));
+    given(snippets.findStalledFormat(any(), any())).willReturn(List.of(format));
     given(rules.get(any(CurrentUser.class), any(), any()))
         .willReturn(new RuleConfigResponse("printscript", RuleKind.LINT, false, config));
 
@@ -147,10 +163,8 @@ class RuleApplierTest {
     lint.markLintPending(Instant.now().minusSeconds(3600), 3, UUID.randomUUID());
     Snippet format = snippet("printscript");
     format.markFormatPending(Instant.now().minusSeconds(3600), 3, UUID.randomUUID());
-    given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
-        .willReturn(List.of(lint));
-    given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))
-        .willReturn(List.of(format));
+    given(snippets.findStalledLint(any(), any())).willReturn(List.of(lint));
+    given(snippets.findStalledFormat(any(), any())).willReturn(List.of(format));
 
     assertThat(applier.requeueStalled(Instant.now())).isZero();
 
@@ -163,10 +177,8 @@ class RuleApplierTest {
   void requeueStalledFailsTheSnippetWhenItsRulesCannotBeLoaded() {
     Snippet lint = snippet("cobol");
     lint.markLintPending(Instant.now().minusSeconds(3600), 0, UUID.randomUUID());
-    given(snippets.findByLintStatusAndLintRequestedAtBefore(any(), any()))
-        .willReturn(List.of(lint));
-    given(snippets.findByFormatStatusAndFormatRequestedAtBefore(any(), any()))
-        .willReturn(List.of());
+    given(snippets.findStalledLint(any(), any())).willReturn(List.of(lint));
+    given(snippets.findStalledFormat(any(), any())).willReturn(List.of());
     given(rules.get(any(CurrentUser.class), any(), any()))
         .willThrow(new UnsupportedLanguageException("nope"));
 

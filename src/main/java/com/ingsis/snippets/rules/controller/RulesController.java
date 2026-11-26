@@ -49,7 +49,7 @@ class RulesController {
       CurrentUser user,
       @PathVariable String language,
       @Valid @RequestBody RuleConfigRequest request) {
-    return saveAndEnqueue(user, language, RuleKind.LINT, request);
+    return applier.saveAndEnqueue(user, language, RuleKind.LINT, request.config());
   }
 
   @PutMapping("/rules/{language}/format")
@@ -58,13 +58,6 @@ class RulesController {
       CurrentUser user,
       @PathVariable String language,
       @Valid @RequestBody RuleConfigRequest request) {
-    return saveAndEnqueue(user, language, RuleKind.FORMAT, request);
-  }
-
-  private RuleApplyResponse saveAndEnqueue(
-      CurrentUser user, String language, RuleKind kind, RuleConfigRequest request) {
-    RuleConfigResponse saved = rules.save(user, language, kind, request.config());
-    int queued = applier.enqueue(user, language, kind, saved.config());
-    return new RuleApplyResponse(language, kind, saved.config(), queued);
+    return applier.saveAndEnqueue(user, language, RuleKind.FORMAT, request.config());
   }
 }

@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ingsis.snippets.common.error.UnsupportedLanguageException;
 import com.ingsis.snippets.common.identity.CurrentUser;
+import com.ingsis.snippets.rules.dto.RuleApplyResponse;
 import com.ingsis.snippets.rules.dto.RuleConfigResponse;
 import com.ingsis.snippets.rules.model.RuleKind;
 import com.ingsis.snippets.rules.service.RulesService;
@@ -53,15 +54,15 @@ class RulesControllerTest {
 
   @Test
   void putLintSavesEnqueuesAndReturns202() throws Exception {
-    given(rules.save(any(CurrentUser.class), eq("printscript"), eq(RuleKind.LINT), any()))
+    given(
+            applier.saveAndEnqueue(
+                any(CurrentUser.class), eq("printscript"), eq(RuleKind.LINT), any()))
         .willReturn(
-            new RuleConfigResponse(
+            new RuleApplyResponse(
                 "printscript",
                 RuleKind.LINT,
-                false,
-                mapper.readTree("{\"identifierFormat\":\"snake case\"}")));
-    given(applier.enqueue(any(CurrentUser.class), eq("printscript"), eq(RuleKind.LINT), any()))
-        .willReturn(5);
+                mapper.readTree("{\"identifierFormat\":\"snake case\"}"),
+                5));
 
     mvc.perform(
             put("/rules/printscript/lint")
@@ -76,11 +77,11 @@ class RulesControllerTest {
 
   @Test
   void putFormatSavesEnqueuesAndReturns202() throws Exception {
-    given(rules.save(any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT), any()))
+    given(
+            applier.saveAndEnqueue(
+                any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT), any()))
         .willReturn(
-            new RuleConfigResponse("printscript", RuleKind.FORMAT, false, mapper.readTree("{}")));
-    given(applier.enqueue(any(CurrentUser.class), eq("printscript"), eq(RuleKind.FORMAT), any()))
-        .willReturn(3);
+            new RuleApplyResponse("printscript", RuleKind.FORMAT, mapper.readTree("{}"), 3));
 
     mvc.perform(
             put("/rules/printscript/format")

@@ -15,4 +15,5 @@ public record TasksProperties(
     Duration pollInterval,
     Duration claimIdle,
     Duration claimInterval,
-    int maxDeliveries) {}
+    int maxDeliveries,
+    Duration retryBackoff) {}
