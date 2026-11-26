@@ -42,8 +42,8 @@ jobs:
     name: Build & Publish Docker Image
     needs: build
     runs-on: ubuntu-latest
-    # Solo publica la imagen en GHCR cuando el commit se mergea a main
-    if: github.ref == 'refs/heads/main'
+    # Publica la imagen en GHCR solo en push a dev o main (no en PRs ni feature branches)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,8 +61,10 @@ jobs:
         with:
           images: ghcr.io/tp1-2-ingsis/snippet-service
           tags: |
-            type=raw,value=latest
-            type=sha,format=short
+            type=raw,value=dev,enable=${{ github.ref_name == 'dev' }}
+            type=sha,format=short,prefix=dev-,enable=${{ github.ref_name == 'dev' }}
+            type=raw,value=latest,enable=${{ github.ref_name != 'dev' }}
+            type=sha,format=short,prefix=,enable=${{ github.ref_name != 'dev' }}
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
@@ -72,3 +74,26 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Deploy to the environment
+        if: ${{ github.ref_name == 'dev' || github.ref_name == 'main' }}
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ github.ref_name == 'dev' && secrets.DEV_HOST || secrets.PROD_HOST }}
+          IMAGE_BASE: ghcr.io/tp1-2-ingsis/snippet-service
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ] || [ -z "$DEPLOY_USER" ] || [ -z "$DEPLOY_HOST" ]; then
+            echo "::notice::Deploy secrets (DEPLOY_SSH_KEY, DEPLOY_USER, DEV_HOST/PROD_HOST) are not set, skipping deploy"
+            exit 0
+          fi
+          SHORT_SHA="${GITHUB_SHA::7}"
+          if [ "$GITHUB_REF_NAME" = "dev" ]; then TAG="dev-$SHORT_SHA"; else TAG="$SHORT_SHA"; fi
+          IMAGE="$IMAGE_BASE:$TAG"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          SSH_OPTS=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new)
+          TARGET="$DEPLOY_USER@$DEPLOY_HOST"
+          for svc in snippet-service; do
+            ssh "${SSH_OPTS[@]}" "$TARGET" "docker service update --with-registry-auth --image $IMAGE snippet-searcher_$svc"
+          done
