@@ -63,7 +63,7 @@ Estados: **Decidida** (viene del spec o ya está acordada) · **Propuesta** (hay
 **Estado:** Decidida (spec §4.1); aplicada y extendida en SNIP-4 (D3 del plan de cierre)
 **Decisión:** Todo acceso al contenido (crear, detalle, actualizar, borrar, descarga, tests, encolado de reglas, reaper, relay WebSocket, hash del contenido) pasa por `SnippetStorage` (`create`, `save`, `get`, `remove`). Hay dos implementaciones, elegidas con `SNIPPET_STORAGE`:
 - `database` (default): la columna `content` de la fila. Local y tests no necesitan Assets.
-- `assets`: `AssetSnippetStorage` contra Assets Service (`/v1/assets/{snippetId}`: POST crea, PUT reemplaza, GET lee, DELETE borra). Los errores siguen D11 (`DownstreamException`, 502). En este modo la columna `content` (nullable desde V7) no se escribe.
+- `assets`: `AssetSnippetStorage` contra Assets Service (`/v1/assets/{snippetId}`: POST crea, PUT reemplaza, GET lee, DELETE borra). Los errores siguen D11 (`DownstreamException`, 502). En este modo la columna `content` (nullable desde V8) no se escribe.
 
 **Migración:** al arrancar en modo `assets`, un migrador (paginado por id, una transacción por fila, idempotente y reanudable) sube las filas con `content` no nulo y deja la columna en `NULL`; si Assets ya tiene el contenido, gana Assets. Además, un `get` con 404 en Assets y texto en la columna lo sirve y migra esa fila.
 **Consistencia:** crear compensa (D10): si falla guardar el contenido se revierte la metadata, y si falla el grant se borra el contenido. Actualizar escribe el contenido al final de la transacción. Borrar elimina primero el contenido (si Assets falla no se borra nada) y después la fila.

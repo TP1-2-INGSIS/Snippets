@@ -147,7 +147,12 @@ public class RuleApplier {
     List<TaskEvent> events = new ArrayList<>();
     for (Snippet snippet : toEnqueue) {
       try {
-        TaskEvent event = TaskEvent.of(snippet, TaskType.LINT, rulesFor.apply(snippet).toString());
+        TaskEvent event =
+            TaskEvent.of(
+                snippet,
+                storage.get(snippet.getId()),
+                TaskType.LINT,
+                rulesFor.apply(snippet).toString());
         snippet.markLintPending(now, 0, event.taskId());
         events.add(event);
       } catch (RuntimeException ex) {
