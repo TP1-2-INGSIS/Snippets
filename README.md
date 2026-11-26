@@ -52,6 +52,7 @@ cobertura ≥ 80 % (JaCoCo). Requiere Docker para los tests de repositorio.
 | `TASKS_CONSUMER_ENABLED` | `true` | Apaga el consumidor de resultados (útil en tests o réplicas sin consumidor) |
 | `SERVICES_CONNECT_TIMEOUT` | `2s` | Timeout de conexión a los otros servicios |
 | `SERVICES_READ_TIMEOUT` | `10s` | Timeout de lectura (debe superar los 5 s de ejecución de Language) |
+| `RUN_IDLE_TIMEOUT` | `6m` | Inactividad máxima del relay WebSocket de ejecución |
 
 Las extensiones de archivo para la descarga se configuran en `application.yml`
 (`download.extensions`, con `download.fallback`).
@@ -90,6 +91,28 @@ Todos requieren identidad (ver Autenticación). Errores con el formato común
 | `PUT` | `/snippets/{id}/upload` | Actualizar (archivo) |
 | `DELETE` | `/snippets/{id}` | Borrar (snippet + tests + permisos) |
 | `GET` | `/snippets/{id}/download?formatted` | Descargar original o formateado (`formatted_content` guardado, o al vuelo con reglas del owner, D15/D21) |
+
+### Ejecución interactiva (WebSocket)
+| Protocolo | Path | Descripción |
+|---|---|---|
+| `WS` | `/snippets/{id}/run?access_token=<JWT>` | Ejecuta el snippet y hace de relay con Language (US10). En prod: `wss://<host>/api/snippets/{id}/run` |
+
+- Autenticación: los browsers no pueden mandar headers en un WebSocket, así que el JWT va en
+  `?access_token=` (solo en esta ruta; el resto de la API lo ignora). Con
+  `AUTH_HEADER_IDENTITY_ENABLED=true` se acepta `?userId=<id>` (o `X-User-Id`). Sin identidad o con
+  un token inválido el handshake responde 401. No se loguea el token.
+- Autorización: permiso READ sobre el snippet. Si falla (o el snippet no existe) se cierra con
+  **1008** sin abrir sesión con Language.
+- Relay hacia `ws://<LANGUAGE_SERVICE_URL>/languages/{language}/run`: el primer mensaje a Language es
+  `{type:"start", content, version, env:{}}`. Mensajes JSON sin modificar:
+  UI → Language `{type:"input", value}` y `{type:"stop"}`;
+  Language → UI `{type:"output", value}`, `{type:"input-request", prompt}`, `{type:"finished"}` y
+  `{type:"error", message, line?, column?}`.
+- Cierre: el código de Language se reenvía a la UI sin cambios (1000 en `finished`, `stop`, errores
+  del programa y timeout de input; 1008 por violación de protocolo; 1011 por error interno, "busy"
+  o el límite de 5 min). Snippets usa 1008 si falla la identidad o el permiso y 1011 si Language
+  no responde, corta sin código o el relay falla (antes manda un `error`). Cerrar un lado cierra el otro.
+- `RUN_IDLE_TIMEOUT` (`run.idle-timeout`, default `6m`): red de seguridad si no pasa ningún mensaje.
 
 ### Compartir
 | Método | Path | Descripción |

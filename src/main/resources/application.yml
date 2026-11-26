@@ -35,6 +35,10 @@ services:
   permission:
     url: ${PERMISSION_SERVICE_URL:http://localhost:8081}
 
+# US10: interactive execution relay (WebSocket). Safety net above Language's own limits.
+run:
+  idle-timeout: ${RUN_IDLE_TIMEOUT:6m}
+
 download:
   fallback: txt
   extensions:
